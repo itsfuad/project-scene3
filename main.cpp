@@ -956,15 +956,21 @@ void display()
     glVertex2f(WINDOW_WIDTH, SIDEWALK_BOTTOM_Y_START);
     glVertex2f(0, SIDEWALK_BOTTOM_Y_START);
     glEnd();
-    // Draw grass clumps
-    for (float gx = 20; gx < WINDOW_WIDTH; gx += 40 + rand() % 30) {
-        float gy = 10 + rand() % (int)(SIDEWALK_BOTTOM_Y_START * 0.5f);
-        drawGrass(gx, gy, 0.7f + (rand() % 10) / 20.0f);
+
+    // Draw grass clumps (deterministic, evenly spaced)
+    for (int i = 0; i < 25; ++i) {
+        float gx = 20 + i * 38;
+        float gy = 10 + (i * 13) % (int)(SIDEWALK_BOTTOM_Y_START * 0.5f);
+        float scale = 0.8f + ((i * 7) % 10) / 20.0f;
+        drawGrass(gx, gy, scale);
     }
-    // Draw flowers
-    for (float fx = 35; fx < WINDOW_WIDTH; fx += 60 + rand() % 40) {
-        float fy = 18 + rand() % (int)(SIDEWALK_BOTTOM_Y_START * 0.5f);
-        drawFlower(fx, fy, 0.7f + (rand() % 10) / 20.0f);
+
+    // Draw flowers (deterministic, less frequent)
+    for (int i = 0; i < 10; ++i) {
+        float fx = 35 + i * 90;
+        float fy = 18 + (i * 23) % (int)(SIDEWALK_BOTTOM_Y_START * 0.5f);
+        float scale = 0.8f + ((i * 5) % 10) / 20.0f;
+        drawFlower(fx, fy, scale);
     }
     
     drawRoadAndSidewalks();
