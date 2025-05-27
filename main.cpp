@@ -50,8 +50,27 @@ const int WARNING_MESSAGE_DURATION = 120;
 
 bool autoCarMovement = true;
 bool scenePaused = false;
-int mainTrafficLightState = 1;
-int pedestrianLightState = 0;
+
+// Add this after the other enums
+enum class TrafficLightState {
+    RED,
+    YELLOW,
+    GREEN,
+};
+
+// Replace the global variable
+TrafficLightState mainTrafficLightState = TrafficLightState::GREEN;
+
+// Add this after the TrafficLightState enum
+enum class PedestrianLightState {
+    RED,
+    WALK,
+    BLINK
+};
+
+// Replace the global variable
+PedestrianLightState pedestrianLightState = PedestrianLightState::RED;
+
 int trafficLightTimer = 0;
 int pedestrianLightTimer = 0;
 bool pedBlinkOn = true;
@@ -114,7 +133,7 @@ struct Human;
 std::vector<Car> cars;
 std::vector<Human> activeHumans;
 void reshape(int w, int h);
-void drawTrafficSignal(float x, float y, int state);
+void drawTrafficSignal(float x, float y, TrafficLightState state);
 
 void drawText(float x, float y, const char* text, float scale = 0.7f) {
     glPushMatrix();
@@ -372,7 +391,7 @@ struct Human
             break;
         case WAITING_AT_CROSSING_EDGE:
 
-            if (pedestrianLightState == 1)
+            if (pedestrianLightState == PedestrianLightState::WALK)
                 state = CROSSING_ROAD;
             break;
         case CROSSING_ROAD:
@@ -1166,83 +1185,71 @@ void drawHumanShape(float x, float y, float scale, int walkState) {
     glPopMatrix();
 }
 
-// Add these global variables after other global variables
-bool humanSignBlinkOn = true;
-int humanSignBlinkCounter = 0;
-const int HUMAN_SIGN_BLINK_DURATION = 150;
-const int HUMAN_SIGN_BLINK_INTERVAL = 15;
-
-void drawHumanSign(float x, float y, int walkState) {
-    // Determine color based on state and blinking
-    if (walkState == 1) {
-        if (pedBlinkOn)
-            glColor3f(1.0f, 0.2f, 0.0f);
-        else
-            glColor3f(0.4f, 0.1f, 0.0f);
-    } else {
+void drawHumanSign(float x, float y, PedestrianLightState state) {
+    if (state == PedestrianLightState::WALK)
+        glColor3f(0.0f, 1.0f, 0.0f); // Green for "WALK"
+    else if (state == PedestrianLightState::BLINK && pedBlinkOn)
+        glColor3f(1.0f, 0.5f, 0.0f); // Orange when blinking on
+    else
         glColor3f(0.9f, 0.0f, 0.0f); // Red for "STOP"
-    }
 
-    drawHumanShape(x + 5, y + 85, 0.8, walkState);
+    drawHumanShape(x + 5, y + 85, 0.8, state == PedestrianLightState::WALK ? 1 : 0);
 }
 
-void drawTrafficSignal(float x, float y, int state) {
-
+void drawTrafficSignal(float x, float y, TrafficLightState state) {
     const float height = 60.0f;
     const float width = 20.0f;
     const float lightRadius = 8.0f;
     float spacing = height / 3.0f;
     int translateY = 60;
     int translateX = -(width / 4);
-
     const float gap = 18;
 
     // Draw three segments (top, middle, bottom)
     for (int i = 0; i < 3; i++) {
         float centerY = y + height - (i + 0.5f) * spacing;
-        // Determine bulb color based on segment and current state.
-        if(i == 0 && state == 0)
+        // Determine bulb color based on segment and current state
+        if(i == 0 && state == TrafficLightState::RED)
             glColor3f(1.0f, 0.0f, 0.0f);
-        else if(i == 1 && state == 2)
+        else if(i == 1 && state == TrafficLightState::YELLOW)
             glColor3f(1.0f, 1.0f, 0.0f);
-        else if(i == 2 && state == 1)
+        else if(i == 2 && state == TrafficLightState::GREEN)
             glColor3f(0.0f, 1.0f, 0.0f);
         else
             glColor3f(0.3f, 0.3f, 0.3f); // dim bulb when off
 
-
-        // Draw left and right semi-circles for the bulb.
+        // Draw left and right semi-circles for the bulb
         drawCircle(x + translateX + gap, centerY + translateY - lightRadius, lightRadius);
         drawCircle(x + translateX + width - gap, centerY + translateY - lightRadius, lightRadius);
 
         bool drawGlow = true;
 
-        if(i == 0 && state == 0)
+        if(i == 0 && state == TrafficLightState::RED)
             glColor4f(1.0f, 0.0f, 0.0f, 0.3f);
-        else if(i == 1 && state == 2)
+        else if(i == 1 && state == TrafficLightState::YELLOW)
             glColor4f(1.0f, 1.0f, 0.0f, 0.3f);
-        else if(i == 2 && state == 1)
+        else if(i == 2 && state == TrafficLightState::GREEN)
             glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
         else
             drawGlow = false;
     
-        
         if (drawGlow) {
             drawCircle(x + translateX + gap, centerY + translateY - lightRadius, lightRadius * 1.8f);
             drawCircle(x + translateX + width - gap, centerY + translateY - lightRadius, lightRadius * 1.8f);
         }
 
-        // Draw triangle shapes on each side (using fixed black color).
+        // Draw triangle shapes on each side
         glColor3f(0.0f, 0.0f, 0.0f);
         drawTriangle(x + translateX, centerY + translateY, x + translateX - 10, centerY + translateY, x + translateX, centerY - 10 + translateY);
         drawTriangle(x + translateX + width, centerY + translateY, x + translateX + width + 10, centerY + translateY, x + translateX + width, centerY - 10 + translateY);
     }
-    // Draw the main black signal box.
+
+    // Draw the main black signal box
     glColor3f(0.0f, 0.0f, 0.0f);
     drawRect(x + translateX, y + translateY - 8, width, height);
     drawRect(x, y, 10, 100);
 
-    drawHumanSign(x, y, !state);
+    drawHumanSign(x, y, pedestrianLightState);
 }
 
 
@@ -1379,7 +1386,7 @@ void updateScene()
 
         bool stoppedByLight = false;
 
-        if (mainTrafficLightState == 0 || mainTrafficLightState == 2)
+        if (mainTrafficLightState == TrafficLightState::RED || mainTrafficLightState == TrafficLightState::YELLOW)
         {
 
             if (car1.x + car1.width < CAR_STOP_LINE_X + 5.0f &&
@@ -1502,98 +1509,97 @@ void updateScene()
 
 
     trafficLightTimer++;
-    if (mainTrafficLightState == 1)
-    {
-        if (pedestrianIsWaitingToCross && trafficLightTimer > MIN_CAR_GREEN_TIME)
-        {
 
-            bool pedestrianCrossing = false;
-            for (const auto &ped : activeHumans)
-            {
-                if (ped.state == CROSSING_ROAD)
-                {
-                    pedestrianCrossing = true;
-                    break;
+    switch (mainTrafficLightState) {
+        case TrafficLightState::GREEN:
+            // Check if we should transition to yellow
+            if (pedestrianIsWaitingToCross && trafficLightTimer > MIN_CAR_GREEN_TIME) {
+                // Only transition if no pedestrians are currently crossing
+                bool pedestrianCrossing = false;
+                for (const auto &ped : activeHumans) {
+                    if (ped.state == CROSSING_ROAD) {
+                        pedestrianCrossing = true;
+                        break;
+                    }
                 }
-            }
 
-            if (!pedestrianCrossing)
-            {
-                mainTrafficLightState = 2;
-                trafficLightTimer = 0;
-            }
-        }
-    }
-    else if (mainTrafficLightState == 2)
-    {
-        if (trafficLightTimer > USER_TL_YELLOW_DURATION)
-        {
-            mainTrafficLightState = 0;
-            trafficLightTimer = 0;
-            pedestrianLightState = 0;
-            pedestrianLightTimer = 0;
-        }
-    }
-    else if (mainTrafficLightState == 0)
-    {
-
-        if (trafficLightTimer > USER_PED_WALK_START_DELAY_AFTER_RED && pedestrianLightState == 0)
-        {
-            bool anyPedStillWaiting = false;
-            for (const auto &ped : activeHumans)
-                if (ped.state == WAITING_AT_CROSSING_EDGE)
-                    anyPedStillWaiting = true;
-
-            if (anyPedStillWaiting || pedestrianIsWaitingToCross)
-            {
-                pedestrianLightState = 1;
-                pedestrianLightTimer = 0;
-                pedestrianIsWaitingToCross = false;
-            }
-            else if (trafficLightTimer > USER_PED_WALK_START_DELAY_AFTER_RED + 100 && pedestrianLightState == 0)
-            {
-
-
-                if (trafficLightTimer > USER_PED_WALK_START_DELAY_AFTER_RED + USER_PED_WALK_DURATION / 2)
-                {
-                    mainTrafficLightState = 1;
+                if (!pedestrianCrossing) {
+                    mainTrafficLightState = TrafficLightState::YELLOW;
                     trafficLightTimer = 0;
                 }
             }
-        }
+            break;
 
-        if (pedestrianLightState == 1)
-        {
-            pedestrianLightTimer++;
-            if (pedestrianLightTimer > USER_PED_WALK_DURATION)
-            {
-                pedestrianLightState = 2;
-                pedestrianLightTimer = 0;
-                pedBlinkCounter = 0;
-                pedBlinkOn = true;
+        case TrafficLightState::YELLOW:
+            if (trafficLightTimer > USER_TL_YELLOW_DURATION) {
+                // If we came from green, go to red
+                // If we came from red, go to green
+                if (pedestrianLightState == PedestrianLightState::RED && !pedestrianIsWaitingToCross) {
+                    mainTrafficLightState = TrafficLightState::GREEN;
+                    trafficLightTimer = 0;
+                } else {
+                    mainTrafficLightState = TrafficLightState::RED;
+                    trafficLightTimer = 0;
+                    pedestrianLightState = PedestrianLightState::RED;
+                    pedestrianLightTimer = 0;
+                }
             }
-        }
-        else if (pedestrianLightState == 2)
-        {
-            pedestrianLightTimer++;
-            humanSignBlinkCounter = (humanSignBlinkCounter + 1) % HUMAN_SIGN_BLINK_INTERVAL;
-            if (humanSignBlinkCounter == 0) {
-                humanSignBlinkOn = !humanSignBlinkOn;
-            }
-            if (pedestrianLightTimer > HUMAN_SIGN_BLINK_DURATION) {
-                pedestrianLightState = 0;
-                humanSignBlinkOn = true;
-            }
-        }
+            break;
 
+        case TrafficLightState::RED:
+            // Handle pedestrian light states
+            switch (pedestrianLightState) {
+                case PedestrianLightState::RED:
+                    // Check if we should start the walk phase
+                    if (trafficLightTimer > USER_PED_WALK_START_DELAY_AFTER_RED) {
+                        bool anyPedWaiting = false;
+                        for (const auto &ped : activeHumans) {
+                            if (ped.state == WAITING_AT_CROSSING_EDGE) {
+                                anyPedWaiting = true;
+                                break;
+                            }
+                        }
 
-        if (trafficLightTimer > USER_TL_RED_DURATION && pedestrianLightState == 0)
-        {
-            mainTrafficLightState = 1;
-            trafficLightTimer = 0;
-        }
+                        if (anyPedWaiting || pedestrianIsWaitingToCross) {
+                            pedestrianLightState = PedestrianLightState::WALK;
+                            pedestrianLightTimer = 0;
+                            pedestrianIsWaitingToCross = false;
+                        }
+                        // If no pedestrians are waiting and we've waited long enough, go back to green
+                        else if (trafficLightTimer > USER_TL_RED_DURATION) {
+                            mainTrafficLightState = TrafficLightState::YELLOW;
+                            trafficLightTimer = 0;
+                        }
+                    }
+                    break;
+
+                case PedestrianLightState::WALK:
+                    pedestrianLightTimer++;
+                    if (pedestrianLightTimer > USER_PED_WALK_DURATION) {
+                        pedestrianLightState = PedestrianLightState::BLINK;
+                        pedestrianLightTimer = 0;
+                        pedBlinkCounter = 0;
+                        pedBlinkOn = true;
+                    }
+                    break;
+
+                case PedestrianLightState::BLINK:
+                    pedestrianLightTimer++;
+                    pedBlinkCounter = (pedBlinkCounter + 1) % 25;
+                    if (pedBlinkCounter == 0) {
+                        pedBlinkOn = !pedBlinkOn;
+                    }
+                    if (pedestrianLightTimer > USER_PED_BLINK_DURATION) {
+                        pedestrianLightState = PedestrianLightState::RED;
+                        pedBlinkOn = true;
+                        // After blinking is done, go back to green
+                        mainTrafficLightState = TrafficLightState::YELLOW;
+                        trafficLightTimer = 0;
+                    }
+                    break;
+            }
+            break;
     }
-
 
     if (cars.size() < 4 && rand() % CAR_SPAWN_RATE == 0)
     {
@@ -1700,12 +1706,13 @@ void mouse(int button, int state, int x, int y)
             }
             else
             {
-                mainTrafficLightState = (mainTrafficLightState + 1) % 3;
+                int nextState = (static_cast<int>(mainTrafficLightState) + 1) % 3;
+                mainTrafficLightState = static_cast<TrafficLightState>(nextState);
                 trafficLightTimer = 0;
                 pedestrianLightTimer = 0;
-                if (mainTrafficLightState == 1)
+                if (mainTrafficLightState == TrafficLightState::GREEN)
                 {
-                    pedestrianLightState = 0;
+                    pedestrianLightState = PedestrianLightState::RED;
                     pedestrianIsWaitingToCross = false;
                 }
                 std::cout << "Traffic Light Manually Cycled." << std::endl;
