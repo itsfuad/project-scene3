@@ -8,8 +8,6 @@
 #include <memory>
 #include <functional>
 
-
-
 const float USER_CAR_SPEED_BASE = 1.75f;
 const float USER_HUMAN_SPEED = 0.80f;
 const float USER_HUMAN_SIDEWALK_SPEED_FACTOR = 1.2f;
@@ -73,7 +71,7 @@ const float SIDEWALK_BOTTOM_Y_START = 120.0f;
 const float SIDEWALK_BOTTOM_Y_END = 150.0f;
 
 const float TRAFFIC_LIGHT_X = 600.0f;
-const int TRAFFIC_LIGHT_BOX_WIDTH = 18;
+const int TRAFFIC_LIGHT_BOX_WIDTH = 20;
 const float CAR_STOP_LINE_X = TRAFFIC_LIGHT_X - 20.0f;
 const float HUMAN_CROSSING_X_START = TRAFFIC_LIGHT_X + 35.0f;
 const float HUMAN_CROSSING_WIDTH = 70.0f;
@@ -97,13 +95,6 @@ const int Z_INDEX_TREE_BOTTOM = 8;
 const int Z_INDEX_LIGHT_POLE_BOTTOM = 8;
 const int Z_INDEX_TEXT = 9;
 
-
-void drawTrafficSignal(float, float, int);
-void drawHumanSignal(float, float, int, bool);
-void renderText(float, float, const char *);
-
-
-
 struct Rect
 {
     float x, y, w, h;
@@ -123,8 +114,35 @@ struct Human;
 std::vector<Car> cars;
 std::vector<Human> activeHumans;
 void reshape(int w, int h);
+void drawTrafficSignal(float x, float y, int state);
 
+void drawText(float x, float y, const char* text, float scale = 0.7f) {
+    glPushMatrix();
+    glTranslatef(x, y, 0.0f);
+    glScalef(scale, scale, 1.0f);
+    glRasterPos2f(0, 0);
+    for (const char* p = text; *p; p++) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *p);  // Changed from 18 to 12 for smaller size
+    }
+    glPopMatrix();
+}
 
+void drawRect(float x, float y, float width, float height) {
+    glBegin(GL_QUADS);
+    glVertex2f(x, y);
+    glVertex2f(x + width, y);
+    glVertex2f(x + width, y + height);
+    glVertex2f(x, y + height);
+    glEnd();
+}
+
+void drawLine(float x1, float y1, float x2, float y2, float thickness = 1.0f) {
+    glLineWidth(thickness);
+    glBegin(GL_LINES);
+    glVertex2f(x1, y1);
+    glVertex2f(x2, y2);
+    glEnd();
+}
 
 void drawCircle(float cx, float cy, float r, int num_segments = 30)
 {
@@ -139,6 +157,13 @@ void drawCircle(float cx, float cy, float r, int num_segments = 30)
     glEnd();
 }
 
+void drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3) {
+    glBegin(GL_TRIANGLES);
+    glVertex2f(x1, y1);
+    glVertex2f(x2, y2);
+    glVertex2f(x3, y3);
+    glEnd();
+}
 
 
 struct Car
@@ -473,116 +498,6 @@ struct Human
     Rect getBounds() const { return {x - visualWidth / 2.0f, y, visualWidth, visualHeight}; }
 };
 
-
-struct DrawableObject
-{
-    int zIndex;
-    virtual void draw() = 0;
-    virtual ~DrawableObject() = default;
-};
-
-
-struct Tree : public DrawableObject
-{
-    float x, y;
-    Tree(float _x, float _y) : x(_x), y(_y) { zIndex = Z_INDEX_TREE_TOP; }
-    void draw() override
-    {
-        glColor3f(0.5f, 0.3f, 0.05f);
-        glBegin(GL_QUADS);
-        glVertex2f(x - 12, y);
-        glVertex2f(x + 12, y);
-        glVertex2f(x + 8, y + 70);
-        glVertex2f(x - 8, y + 70);
-        glEnd();
-        glColor3f(0.0f, 0.45f, 0.05f);
-        drawCircle(x, y + 100, 35);
-        drawCircle(x - 20, y + 85, 30);
-        drawCircle(x + 20, y + 85, 30);
-        glColor3f(0.1f, 0.55f, 0.1f);
-        drawCircle(x, y + 110, 25);
-    }
-};
-
-
-struct StreetLamp : public DrawableObject
-{
-    float x, y;
-    StreetLamp(float _x, float _y) : x(_x), y(_y) { zIndex = Z_INDEX_LIGHT_POLE_TOP; }
-    void draw() override
-    {
-        glColor3f(0.5f, 0.5f, 0.5f);
-        glBegin(GL_QUADS);
-        glVertex2f(x - 4, y);
-        glVertex2f(x + 4, y);
-        glVertex2f(x + 4, y + 160);
-        glVertex2f(x - 4, y + 160);
-        glEnd();
-        glBegin(GL_QUADS);
-        glVertex2f(x, y + 160);
-        glVertex2f(x + 40, y + 160);
-        glVertex2f(x + 40, y + 155);
-        glVertex2f(x, y + 155);
-        glEnd();
-        if (isNight)
-        {
-            glColor3f(1.0f, 1.0f, 0.7f);
-            drawCircle(x + 40, y + 150, 14);
-            glColor4f(1.0f, 1.0f, 0.7f, 0.3f);
-            drawCircle(x + 40, y + 150, 22);
-            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-        }
-        else
-        {
-            glColor3f(0.6f, 0.6f, 0.5f);
-            drawCircle(x + 40, y + 150, 12);
-        }
-    }
-};
-
-
-struct TrafficLight : public DrawableObject
-{
-    float x, y;
-    int state;
-    TrafficLight(float _x, float _y, int _state) : x(_x), y(_y), state(_state) { zIndex = Z_INDEX_TRAFFIC_LIGHT; }
-    void draw() override
-    {
-        drawTrafficSignal(x, y, state);
-    }
-};
-
-
-struct HumanSignal : public DrawableObject
-{
-    float x, y;
-    int state;
-    bool blinkOn;
-    HumanSignal(float _x, float _y, int _state, bool _blinkOn)
-        : x(_x), y(_y), state(_state), blinkOn(_blinkOn) { zIndex = Z_INDEX_HUMAN_TOP; }
-    void draw() override
-    {
-        drawHumanSignal(x, y, state, blinkOn);
-    }
-};
-
-
-struct WarningText : public DrawableObject
-{
-    float x, y;
-    const char *text;
-    WarningText(float _x, float _y, const char *_text) : x(_x), y(_y), text(_text) { zIndex = Z_INDEX_TEXT; }
-    void draw() override
-    {
-        glColor3f(1.0f, 0.0f, 0.0f);
-        renderText(x, y, text);
-    }
-};
-
-
-std::vector<std::unique_ptr<DrawableObject>> sceneObjects;
-
-
 // Add these global variables after the other global variables
 struct Cloud {
     float x, y;
@@ -777,16 +692,6 @@ void spawnNewHuman()
 }
 
 
-void renderText(float x, float y, const char *text)
-{
-    glRasterPos2f(x, y);
-    for (const char *c = text; *c != '\0'; c++)
-    {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    }
-}
-
-
 
 void drawRoadAndSidewalks()
 {
@@ -840,141 +745,7 @@ void drawZebraCrossing(float road_y_bottom, float road_y_top, float crossing_are
         glEnd();
     }
 }
-void drawTrafficSignal(float x_pos, float y_pos_on_sidewalk, int state)
-{
-    glColor3f(0.25f, 0.25f, 0.25f);
 
-    glBegin(GL_QUADS);
-    glVertex2f(x_pos - 4, y_pos_on_sidewalk);
-    glVertex2f(x_pos + 4, y_pos_on_sidewalk);
-    glVertex2f(x_pos + 4, y_pos_on_sidewalk + 70);
-    glVertex2f(x_pos - 4, y_pos_on_sidewalk + 70);
-    glEnd();
-    glColor3f(0.15f, 0.15f, 0.15f);
-    glBegin(GL_QUADS);
-    glVertex2f(x_pos - TRAFFIC_LIGHT_BOX_WIDTH * 0.8f, y_pos_on_sidewalk + 45);
-    glVertex2f(x_pos + TRAFFIC_LIGHT_BOX_WIDTH * 0.8f, y_pos_on_sidewalk + 45);
-    glVertex2f(x_pos + TRAFFIC_LIGHT_BOX_WIDTH * 0.8f, y_pos_on_sidewalk + 115);
-    glVertex2f(x_pos - TRAFFIC_LIGHT_BOX_WIDTH * 0.8f, y_pos_on_sidewalk + 115);
-    glEnd();
-    float lightRadius = 6.0f;
-    float lightYOffset = 22.0f;
-    float topLightY = y_pos_on_sidewalk + 100;
-    if (state == 0)
-        glColor3f(1.0f, 0.0f, 0.0f);
-    else
-        glColor3f(0.4f, 0.05f, 0.05f);
-    drawCircle(x_pos, topLightY, lightRadius);
-    if (state == 2)
-        glColor3f(1.0f, 1.0f, 0.0f);
-    else
-        glColor3f(0.4f, 0.4f, 0.05f);
-    drawCircle(x_pos, topLightY - lightYOffset, lightRadius);
-    if (state == 1)
-        glColor3f(0.0f, 1.0f, 0.0f);
-    else
-        glColor3f(0.05f, 0.4f, 0.05f);
-    drawCircle(x_pos, topLightY - 2 * lightYOffset, lightRadius);
-}
-void drawHumanSignal(float x_pos, float y_pos_on_sidewalk, int state, bool blinkOn)
-{
-    glColor3f(0.25f, 0.25f, 0.25f);
-    glBegin(GL_QUADS);
-    glVertex2f(x_pos - 4, y_pos_on_sidewalk);
-    glVertex2f(x_pos + 4, y_pos_on_sidewalk);
-    glVertex2f(x_pos + 4, y_pos_on_sidewalk + 40);
-    glVertex2f(x_pos - 4, y_pos_on_sidewalk + 40);
-    glEnd();
-    glColor3f(0.15f, 0.15f, 0.15f);
-    glBegin(GL_QUADS);
-    glVertex2f(x_pos - 18, y_pos_on_sidewalk + 20);
-    glVertex2f(x_pos + 18, y_pos_on_sidewalk + 20);
-    glVertex2f(x_pos + 18, y_pos_on_sidewalk + 70);
-    glVertex2f(x_pos - 18, y_pos_on_sidewalk + 70);
-    glEnd();
-    float iconX = x_pos;
-    float iconY = y_pos_on_sidewalk + 45;
-    if (state == 1)
-    {
-        glColor3f(0.1f, 0.9f, 0.1f);
-        // Standing figure
-        // Head
-        drawCircle(iconX, iconY + 8, 3);
-        
-        // Body
-        glBegin(GL_QUADS);
-        glVertex2f(iconX - 2, iconY - 6);
-        glVertex2f(iconX + 2, iconY - 6);
-        glVertex2f(iconX + 2, iconY + 4);
-        glVertex2f(iconX - 2, iconY + 4);
-        glEnd();
-
-        // Standing pose
-        glBegin(GL_LINES);
-        // Arms
-        glVertex2f(iconX - 2, iconY + 4);
-        glVertex2f(iconX - 2, iconY - 1);
-        glVertex2f(iconX + 2, iconY + 4);
-        glVertex2f(iconX + 2, iconY - 1);
-        // Legs
-        glVertex2f(iconX, iconY - 6);
-        glVertex2f(iconX - 3, iconY - 10);
-        glVertex2f(iconX, iconY - 6);
-        glVertex2f(iconX + 3, iconY - 10);
-        glEnd();
-    }
-    else
-    {
-        if (state == 2)
-        {
-            if (blinkOn)
-                glColor3f(1.0f, 0.2f, 0.0f);
-            else
-                glColor3f(0.4f, 0.1f, 0.0f);
-        }
-        else
-        {
-            glColor3f(1.0f, 0.1f, 0.0f);
-        }
-        // Standing figure
-        // Head
-        drawCircle(iconX, iconY + 8, 3);
-        
-        // Body
-        glBegin(GL_QUADS);
-        glVertex2f(iconX - 2, iconY - 6);
-        glVertex2f(iconX + 2, iconY - 6);
-        glVertex2f(iconX + 2, iconY + 4);
-        glVertex2f(iconX - 2, iconY + 4);
-        glEnd();
-
-        // Standing pose
-        glBegin(GL_LINES);
-        // Arms
-        glVertex2f(iconX - 2, iconY + 4);
-        glVertex2f(iconX - 2, iconY - 1);
-        glVertex2f(iconX + 2, iconY + 4);
-        glVertex2f(iconX + 2, iconY - 1);
-        // Legs
-        glVertex2f(iconX, iconY - 6);
-        glVertex2f(iconX - 3, iconY - 10);
-        glVertex2f(iconX, iconY - 6);
-        glVertex2f(iconX + 3, iconY - 10);
-        glEnd();
-
-        // Draw cross line
-        glLineWidth(2.5f);
-        glBegin(GL_LINES);
-        // First diagonal
-        glVertex2f(iconX - 6, iconY + 6);
-        glVertex2f(iconX + 6, iconY - 6);
-        // Second diagonal
-        glVertex2f(iconX - 6, iconY - 6);
-        glVertex2f(iconX + 6, iconY + 6);
-        glEnd();
-        glLineWidth(1.0f);
-    }
-}
 void drawStreetLamp(float x_pos, float y_pos_on_sidewalk)
 {
     glColor3f(0.5f, 0.5f, 0.5f);
@@ -1003,25 +774,6 @@ void drawStreetLamp(float x_pos, float y_pos_on_sidewalk)
         glColor3f(0.6f, 0.6f, 0.5f);
         drawCircle(x_pos + 30, y_pos_on_sidewalk + 110, 8);  // Reduced from 12
     }
-}
-void drawTreeTrunk(float x_pos, float y_pos_on_sidewalk)
-{
-    glColor3f(0.5f, 0.3f, 0.05f);
-    glBegin(GL_QUADS);
-    glVertex2f(x_pos - 8, y_pos_on_sidewalk);  // Reduced from 12
-    glVertex2f(x_pos + 8, y_pos_on_sidewalk);
-    glVertex2f(x_pos + 6, y_pos_on_sidewalk + 50);  // Reduced from 70
-    glVertex2f(x_pos - 6, y_pos_on_sidewalk + 50);
-    glEnd();
-}
-void drawTreeCanopy(float x_pos, float y_pos_on_sidewalk)
-{
-    glColor3f(0.0f, 0.45f, 0.05f);
-    drawCircle(x_pos, y_pos_on_sidewalk + 75, 25);  // Reduced from 35
-    drawCircle(x_pos - 15, y_pos_on_sidewalk + 65, 20);  // Reduced from 30
-    drawCircle(x_pos + 15, y_pos_on_sidewalk + 65, 20);  // Reduced from 30
-    glColor3f(0.1f, 0.55f, 0.1f);
-    drawCircle(x_pos, y_pos_on_sidewalk + 80, 18);  // Reduced from 25
 }
 
 // Helper to draw a clump of grass
@@ -1187,6 +939,24 @@ void drawSkyscraper(float x, float y, float width, float height) {
     glEnd();
 }
 
+void drawBasicTree(float x_pos, float y_pos_on_sidewalk) {
+    glColor3f(0.5f, 0.3f, 0.05f);
+    glBegin(GL_QUADS);
+    glVertex2f(x_pos - 8, y_pos_on_sidewalk);  // Reduced from 12
+    glVertex2f(x_pos + 8, y_pos_on_sidewalk);
+    glVertex2f(x_pos + 6, y_pos_on_sidewalk + 50);  // Reduced from 70
+    glVertex2f(x_pos - 6, y_pos_on_sidewalk + 50);
+    glEnd();
+
+    glColor3f(0.0f, 0.45f, 0.05f);
+    drawCircle(x_pos, y_pos_on_sidewalk + 75, 25);  // Reduced from 35
+    drawCircle(x_pos - 15, y_pos_on_sidewalk + 65, 20);  // Reduced from 30
+    drawCircle(x_pos + 15, y_pos_on_sidewalk + 65, 20);  // Reduced from 30
+    glColor3f(0.1f, 0.55f, 0.1f);
+    drawCircle(x_pos, y_pos_on_sidewalk + 80, 18);  // Reduced from 25
+}
+
+
 // Add these new tree drawing functions before the display() function
 void drawPineTree(float x_pos, float y_pos_on_sidewalk) {
     // Trunk
@@ -1272,58 +1042,19 @@ void drawMapleTree(float x_pos, float y_pos_on_sidewalk) {
     }
 }
 
-// Modify the display function to include the new elements
-void display()
-{
-    float dayR = 0.52f, dayG = 0.8f, dayB = 0.92f;
-    float duskR = 0.8f, duskG = 0.5f, duskB = 0.4f;
-    float nightR = 0.05f, nightG = 0.05f, nightB = 0.2f;
-    float r, g, b;
+void drawTree(float x, float y, int type) {
+    switch(type) {
+        case 0: 
+            drawBasicTree(x, y);
+            break;
+        case 1: 
+            drawPineTree(x, y); 
+            break;
+    }
+}
 
-    if (currentTimeOfDay >= 0.0 && currentTimeOfDay < 0.20)
-    {
-        // Night to dawn transition
-        float t = currentTimeOfDay / 0.20f;
-        r = nightR * (1 - t) + dayR * t;
-        g = nightG * (1 - t) + dayG * t;
-        b = nightB * (1 - t) + dayB * t;
-    }
-    else if (currentTimeOfDay >= 0.20 && currentTimeOfDay < 0.45)
-    {
-        r = dayR;
-        g = dayG;
-        b = dayB;
-    }
-    else if (currentTimeOfDay >= 0.45 && currentTimeOfDay < 0.70)
-    {
-        // Day to dusk transition
-        float t = (currentTimeOfDay - 0.45f) / 0.25f;
-        r = dayR * (1 - t) + duskR * t;
-        g = dayG * (1 - t) + duskG * t;
-        b = dayB * (1 - t) + duskB * t;
-    }
-    else if (currentTimeOfDay >= 0.70 && currentTimeOfDay < 0.85)
-    {
-        // Dusk to night transition
-        float t = (currentTimeOfDay - 0.70f) / 0.15f;
-        r = duskR * (1 - t) + nightR * t;
-        g = duskG * (1 - t) + nightG * t;
-        b = duskB * (1 - t) + nightB * t;
-    }
-    else
-    {
-        r = nightR;
-        g = nightG;
-        b = nightB;
-    }
-    glClearColor(r, g, b, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glLoadIdentity();
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    // Draw celestial bodies with smooth transitions
+void drawBackgroundScenes() {
+        // Draw celestial bodies with smooth transitions
     float sunX = WINDOW_WIDTH * 0.2f;  // Sun on the left
     float moonX = WINDOW_WIDTH * 0.8f; // Moon on the right
     float celestialY = WINDOW_HEIGHT * 1.2f; // Start sun above the window
@@ -1371,7 +1102,9 @@ void display()
 
     // Another skyscraper
     drawSkyscraper(840.0f, buildingY, 70.0f, 200.0f);
+}
 
+void drawGround() {
     glColor3f(0.35f, 0.7f, 0.25f); // green ground
     glBegin(GL_QUADS);
     glVertex2f(0, 0);
@@ -1395,102 +1128,222 @@ void display()
         float scale = 0.8f + ((i * 5) % 10) / 20.0f;
         drawFlower(fx, fy, scale);
     }
+}
 
+
+void drawHumanShape(float x, float y, float scale, int walkState) {
+    glPushMatrix();
+    glTranslatef(x, y, 0.0f);
+    glScalef(scale, scale, 1.0f);
+    
+    if (walkState == 1) {
+        // WALK state - walking figure
+        //color 
+        glColor3f(0.0f, 0.9f, 0.0f); // Green for "WALK"
+        //left hand
+        drawLine(-7, -4, -3, 4, 2.0f);
+        drawLine(6, 0, 3, 4, 2.0f);
+        drawLine(6, -4, 6, 0, 2.0f);
+        //legs as ^
+        drawLine(-5, -10, -1, -2, 2.0f);
+        drawLine(5, -10, 1, -2, 2.0f);
+    } else {
+        // STOP state - standing figure
+        glColor3f(0.9f, 0.0f, 0.0f); // Red for "STOP"
+        //left hand
+        drawLine(-3, -4, -3, 4, 2.0f);
+        //right hand
+        drawLine(3.2, -4, 3.2, 4, 2.0f);
+        //left leg
+        drawLine(-1, -10, -1, -2, 2.0f);
+        //right leg
+        drawLine(1.2, -10, 1.2, -2, 2.0f);
+    }
+
+    drawCircle(0, 7.5, 3);
+    drawRect(-2, -4, 4, 8); // Body
+    
+    glPopMatrix();
+}
+
+// Add these global variables after other global variables
+bool humanSignBlinkOn = true;
+int humanSignBlinkCounter = 0;
+const int HUMAN_SIGN_BLINK_DURATION = 150;
+const int HUMAN_SIGN_BLINK_INTERVAL = 15;
+
+void drawHumanSign(float x, float y, int walkState) {
+    // Determine color based on state and blinking
+    if (walkState == 1) {
+        if (pedBlinkOn)
+            glColor3f(1.0f, 0.2f, 0.0f);
+        else
+            glColor3f(0.4f, 0.1f, 0.0f);
+    } else {
+        glColor3f(0.9f, 0.0f, 0.0f); // Red for "STOP"
+    }
+
+    drawHumanShape(x + 5, y + 85, 0.8, walkState);
+}
+
+void drawTrafficSignal(float x, float y, int state) {
+
+    const float height = 60.0f;
+    const float width = 20.0f;
+    const float lightRadius = 8.0f;
+    float spacing = height / 3.0f;
+    int translateY = 60;
+    int translateX = -(width / 4);
+
+    const float gap = 18;
+
+    // Draw three segments (top, middle, bottom)
+    for (int i = 0; i < 3; i++) {
+        float centerY = y + height - (i + 0.5f) * spacing;
+        // Determine bulb color based on segment and current state.
+        if(i == 0 && state == 0)
+            glColor3f(1.0f, 0.0f, 0.0f);
+        else if(i == 1 && state == 2)
+            glColor3f(1.0f, 1.0f, 0.0f);
+        else if(i == 2 && state == 1)
+            glColor3f(0.0f, 1.0f, 0.0f);
+        else
+            glColor3f(0.3f, 0.3f, 0.3f); // dim bulb when off
+
+
+        // Draw left and right semi-circles for the bulb.
+        drawCircle(x + translateX + gap, centerY + translateY - lightRadius, lightRadius);
+        drawCircle(x + translateX + width - gap, centerY + translateY - lightRadius, lightRadius);
+
+        bool drawGlow = true;
+
+        if(i == 0 && state == 0)
+            glColor4f(1.0f, 0.0f, 0.0f, 0.3f);
+        else if(i == 1 && state == 2)
+            glColor4f(1.0f, 1.0f, 0.0f, 0.3f);
+        else if(i == 2 && state == 1)
+            glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
+        else
+            drawGlow = false;
+    
+        
+        if (drawGlow) {
+            drawCircle(x + translateX + gap, centerY + translateY - lightRadius, lightRadius * 1.8f);
+            drawCircle(x + translateX + width - gap, centerY + translateY - lightRadius, lightRadius * 1.8f);
+        }
+
+        // Draw triangle shapes on each side (using fixed black color).
+        glColor3f(0.0f, 0.0f, 0.0f);
+        drawTriangle(x + translateX, centerY + translateY, x + translateX - 10, centerY + translateY, x + translateX, centerY - 10 + translateY);
+        drawTriangle(x + translateX + width, centerY + translateY, x + translateX + width + 10, centerY + translateY, x + translateX + width, centerY - 10 + translateY);
+    }
+    // Draw the main black signal box.
+    glColor3f(0.0f, 0.0f, 0.0f);
+    drawRect(x + translateX, y + translateY - 8, width, height);
+    drawRect(x, y, 10, 100);
+
+    drawHumanSign(x, y, !state);
+}
+
+
+
+void drawSceneObjects() {
+    // Draw trees
+    drawTree(180, SIDEWALK_TOP_Y_START + 30, 0); // Regular tree
+    drawTree(500, SIDEWALK_TOP_Y_START + 30, 1); // Pine tree
+    drawTree(700, SIDEWALK_TOP_Y_START + 30, 1); // Pine tree
+
+    // Draw street lamps
+    drawStreetLamp(80, SIDEWALK_TOP_Y_START);
+    drawStreetLamp(380, SIDEWALK_TOP_Y_START);
+    drawStreetLamp(780, SIDEWALK_TOP_Y_START);
+
+    // Draw cars
+    for (const auto &car : cars) {
+        car.draw();
+    }
+
+    // Draw humans
+    for (const auto &p : activeHumans) {
+        p.draw();
+    }
+
+
+    drawTrafficSignal(TRAFFIC_LIGHT_X, SIDEWALK_TOP_Y_START, mainTrafficLightState);
+
+    // Draw bottom trees and street lamp
+    drawTree(850, SIDEWALK_BOTTOM_Y_START, 0);   // Regular tree
+    drawTree(300, SIDEWALK_BOTTOM_Y_START, 1);   // Pine tree
+    drawStreetLamp(950, SIDEWALK_BOTTOM_Y_START);
+}
+
+void transition() {
+    float dayR = 0.52f, dayG = 0.8f, dayB = 0.92f;
+    float duskR = 0.8f, duskG = 0.5f, duskB = 0.4f;
+    float nightR = 0.05f, nightG = 0.05f, nightB = 0.2f;
+    float r, g, b;
+
+    if (currentTimeOfDay >= 0.0 && currentTimeOfDay < 0.20)
+    {
+        // Night to dawn transition
+        float t = currentTimeOfDay / 0.20f;
+        r = nightR * (1 - t) + dayR * t;
+        g = nightG * (1 - t) + dayG * t;
+        b = nightB * (1 - t) + dayB * t;
+    }
+    else if (currentTimeOfDay >= 0.20 && currentTimeOfDay < 0.45)
+    {
+        r = dayR;
+        g = dayG;
+        b = dayB;
+    }
+    else if (currentTimeOfDay >= 0.45 && currentTimeOfDay < 0.70)
+    {
+        // Day to dusk transition
+        float t = (currentTimeOfDay - 0.45f) / 0.25f;
+        r = dayR * (1 - t) + duskR * t;
+        g = dayG * (1 - t) + duskG * t;
+        b = dayB * (1 - t) + duskB * t;
+    }
+    else if (currentTimeOfDay >= 0.70 && currentTimeOfDay < 0.85)
+    {
+        // Dusk to night transition
+        float t = (currentTimeOfDay - 0.70f) / 0.15f;
+        r = duskR * (1 - t) + nightR * t;
+        g = duskG * (1 - t) + nightG * t;
+        b = duskB * (1 - t) + nightB * t;
+    }
+    else
+    {
+        r = nightR;
+        g = nightG;
+        b = nightB;
+    }
+
+    glClearColor(r, g, b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glLoadIdentity();
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+// Modify the display function to include the new elements
+void display()
+{
+
+    transition();
+    
+    drawBackgroundScenes();
+    drawGround();
     drawRoadAndSidewalks();
     drawZebraCrossing(ROAD_Y_BOTTOM, ROAD_Y_TOP, HUMAN_CROSSING_X_START, HUMAN_CROSSING_WIDTH);
-
-
-    struct SceneDrawItem
-    {
-        int zIndex;
-        float y;
-        std::function<void()> drawFunc;
-    };
-    std::vector<SceneDrawItem> drawItems;
-
-
-    auto addTree = [&](float x, float y, int type)
-    {
-        if (y > ROAD_Y_TOP)
-            drawItems.push_back({Z_INDEX_TREE_TOP, y, [=]()
-                                 { 
-                                     switch(type) {
-                                         case 0: drawTreeTrunk(x, y); drawTreeCanopy(x, y); break;
-                                         case 1: drawPineTree(x, y); break;
-                                     }
-                                 }});
-        else if (y < ROAD_Y_BOTTOM)
-            drawItems.push_back({Z_INDEX_TREE_BOTTOM, y, [=]()
-                                 { 
-                                     switch(type) {
-                                         case 0: drawTreeTrunk(x, y); drawTreeCanopy(x, y); break;
-                                         case 1: drawPineTree(x, y); break;
-                                     }
-                                 }});
-        else
-            drawItems.push_back({Z_INDEX_TREE_TOP, y, [=]()
-                                 { 
-                                     switch(type) {
-                                         case 0: drawTreeTrunk(x, y); drawTreeCanopy(x, y); break;
-                                         case 1: drawPineTree(x, y); break;
-                                     }
-                                 }});
-    };
-    addTree(180, SIDEWALK_TOP_Y_START + 30, 0); // Regular tree
-    addTree(500, SIDEWALK_TOP_Y_START + 30, 1); // Pine tree
-    addTree(850, SIDEWALK_BOTTOM_Y_START, 0);   // Regular tree
-    addTree(300, SIDEWALK_BOTTOM_Y_START, 1);   // Pine tree
-    addTree(700, SIDEWALK_TOP_Y_START + 30, 1); // Pine tree
-
-
-    drawItems.push_back({Z_INDEX_TRAFFIC_LIGHT, SIDEWALK_TOP_Y_START, []()
-                         { drawTrafficSignal(TRAFFIC_LIGHT_X, SIDEWALK_TOP_Y_START, mainTrafficLightState); }});
-    drawItems.push_back({Z_INDEX_TRAFFIC_LIGHT, SIDEWALK_TOP_Y_START, []()
-                         { drawHumanSignal(TRAFFIC_LIGHT_X + 120, SIDEWALK_TOP_Y_START, pedestrianLightState, pedBlinkOn); }});
-
-
-    drawItems.push_back({Z_INDEX_LIGHT_POLE_TOP, SIDEWALK_TOP_Y_START, []()
-                         { drawStreetLamp(80, SIDEWALK_TOP_Y_START); }});
-    drawItems.push_back({Z_INDEX_LIGHT_POLE_TOP, SIDEWALK_TOP_Y_START, []()
-                         { drawStreetLamp(380, SIDEWALK_TOP_Y_START); }});
-    drawItems.push_back({Z_INDEX_LIGHT_POLE_TOP, SIDEWALK_TOP_Y_START, []()
-                         { drawStreetLamp(780, SIDEWALK_TOP_Y_START); }});
-    drawItems.push_back({Z_INDEX_LIGHT_POLE_BOTTOM, SIDEWALK_BOTTOM_Y_START, []()
-                         { drawStreetLamp(950, SIDEWALK_BOTTOM_Y_START); }});
-
-
-    for (const auto &p : activeHumans)
-    {
-        if (p.y > ROAD_Y_TOP)
-            drawItems.push_back({Z_INDEX_HUMAN_TOP, p.y, [&p]()
-                                 { p.draw(); }});
-        else if (p.y < ROAD_Y_BOTTOM)
-            drawItems.push_back({Z_INDEX_HUMAN_BOTTOM, p.y, [&p]()
-                                 { p.draw(); }});
-        else
-            drawItems.push_back({Z_INDEX_HUMAN_TOP, p.y, [&p]()
-                                 { p.draw(); }});
-    }
-
-    for (const auto &car : cars)
-    {
-        drawItems.push_back({Z_INDEX_CAR, car.y, [&car]()
-                             { car.draw(); }});
-    }
-
-
-    std::sort(drawItems.begin(), drawItems.end(), [](const SceneDrawItem &a, const SceneDrawItem &b)
-              {
-        if (a.zIndex != b.zIndex) return a.zIndex < b.zIndex;
-        return a.y < b.y; });
-    for (const auto &item : drawItems)
-        item.drawFunc();
-
+    drawSceneObjects();
 
     if (showWarningMessage)
     {
-        glColor3f(1.0f, 0.7f, 0.7f);
-        renderText(TRAFFIC_LIGHT_X - 100, SIDEWALK_TOP_Y_START + 180, "People are still passing the road");
+        glColor3f(1.0f, 0.0f, 0.0f);
+        drawText(TRAFFIC_LIGHT_X - 100, SIDEWALK_TOP_Y_START + 180, "People are still passing the road", 0.7f);
     }
 
     glDisable(GL_BLEND);
@@ -1723,13 +1576,13 @@ void updateScene()
         else if (pedestrianLightState == 2)
         {
             pedestrianLightTimer++;
-            pedBlinkCounter = (pedBlinkCounter + 1) % 25;
-            if (pedBlinkCounter == 0)
-                pedBlinkOn = !pedBlinkOn;
-            if (pedestrianLightTimer > USER_PED_BLINK_DURATION)
-            {
+            humanSignBlinkCounter = (humanSignBlinkCounter + 1) % HUMAN_SIGN_BLINK_INTERVAL;
+            if (humanSignBlinkCounter == 0) {
+                humanSignBlinkOn = !humanSignBlinkOn;
+            }
+            if (pedestrianLightTimer > HUMAN_SIGN_BLINK_DURATION) {
                 pedestrianLightState = 0;
-                pedBlinkOn = true;
+                humanSignBlinkOn = true;
             }
         }
 
