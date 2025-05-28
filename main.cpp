@@ -6,6 +6,7 @@
 #include <ctime>
 #include <algorithm>
 #include <memory>
+#include <chrono>
 #include <functional>
 
 const float USER_CAR_SPEED_BASE = 1.75f;
@@ -35,8 +36,8 @@ bool isNight = false;
 
 
 const int MAX_ACTIVE_HUMANS = 10;
-const int HUMAN_SPAWN_RATE_SIDEWALK = 150;
 const int MIN_TIME_BETWEEN_SPAWNS = 30;
+const int HUMAN_SPAWN_RATE_SIDEWALK = 150;
 
 
 const int CAR_SPAWN_RATE = 400;
@@ -78,6 +79,11 @@ int pedBlinkCounter = 0;
 bool pedestrianIsWaitingToCross = false;
 bool DEBUG_drawBoundingBoxes = false;
 
+// Add these variables after the other global variables
+int yellowBlinkTimer = 0;
+bool yellowLightOn = true;
+bool manualControl = false;
+
 
 const int WINDOW_WIDTH = 1000;
 const int WINDOW_HEIGHT = 600;
@@ -97,6 +103,10 @@ const float HUMAN_CROSSING_CENTER_X = HUMAN_CROSSING_X_START + HUMAN_CROSSING_WI
 
 const int HUMAN_ANIMATION_MAX_FRAMES = 4;
 const int HUMAN_ANIMATION_FRAME_DELAY = 12;
+const int YELLOW_BLINK_INTERVAL = 15;  // Frames between yellow light blinks
+const int YELLOW_DURATION = 90;        // How long yellow light stays on
+const int GREEN_DURATION = 300;        // How long green light stays on
+const int RED_DURATION = 400;          // How long red light stays on
 
 struct Rect
 {
@@ -322,6 +332,7 @@ struct Human
     float x, y;
     float targetX, currentSidewalkY;
     bool onBottomSidewalkInitially;
+    bool willCrossRoad;  // New flag to determine if human will cross the road
     HumanState state;
     int animationFrame;
     int animationTimer;
@@ -334,13 +345,21 @@ struct Human
     {
         speedFactor = 0.85f + (rand() % 31) / 100.0f;
         onBottomSidewalkInitially = startsOnBottomSidewalk;
+        willCrossRoad = (rand() % 3) == 0;  // 1/3 chance to cross the road
         state = WALKING_ON_SIDEWALK_TO_CROSSING;
         if (startsOnBottomSidewalk)
             currentSidewalkY = (SIDEWALK_BOTTOM_Y_START + SIDEWALK_BOTTOM_Y_END) / 2.0f;
         else
             currentSidewalkY = (SIDEWALK_TOP_Y_START + SIDEWALK_TOP_Y_END) / 2.0f;
         y = currentSidewalkY;
-        targetX = HUMAN_CROSSING_CENTER_X + (rand() % (int)(HUMAN_CROSSING_WIDTH / 2) - (int)(HUMAN_CROSSING_WIDTH / 4));
+        
+        // If not crossing, set target to opposite side of screen
+        if (!willCrossRoad) {
+            targetX = (rand() % 2 == 0) ? -visualWidth * 2 : WINDOW_WIDTH + visualWidth * 2;
+        } else {
+            targetX = HUMAN_CROSSING_CENTER_X + (rand() % (int)(HUMAN_CROSSING_WIDTH / 2) - (int)(HUMAN_CROSSING_WIDTH / 4));
+        }
+        
         if (rand() % 2 == 0)
             x = (float)(rand() % (int)(targetX - 50.0f));
         else
@@ -366,7 +385,11 @@ struct Human
             if (fabs(x - targetX) < effectiveSpeed * 1.5f)
             {
                 x = targetX;
-                state = WAITING_AT_CROSSING_EDGE;
+                if (willCrossRoad) {
+                    state = WAITING_AT_CROSSING_EDGE;
+                } else {
+                    state = DESPAWNED;  // If not crossing, despawn when reaching target
+                }
             }
             else if (x < targetX)
                 x += effectiveSpeed;
@@ -450,7 +473,17 @@ struct Human
         float torsoTopY = torsoBottomY + bodyActualHeight;
         float shoulderY = torsoTopY - bodyActualHeight * 0.1f;
         float headCenterY = torsoTopY + headRadius;
+        
+        // Draw head with different color based on willCrossRoad
+        if (willCrossRoad) {
+            glColor3f(0.2f, 0.5f, 0.8f);  // Original blue color
+        } else {
+            glColor3f(0.8f, 0.2f, 0.2f);  // Red color for non-crossing humans
+        }
         drawCircle(x, headCenterY, headRadius);
+        
+        // Reset color for body
+        glColor3f(0.2f, 0.5f, 0.8f);
         glBegin(GL_QUADS);                      /*Torso*/
         glVertex2f(x - visualWidth * 0.2f, torsoBottomY);
         glVertex2f(x + visualWidth * 0.2f, torsoBottomY);
@@ -662,19 +695,16 @@ void spawnNewCar()
 
 void spawnNewHuman()
 {
-
-    printf("New human created\n");
-
-    if (activeHumans.size() >= MAX_ACTIVE_HUMANS)
+    if (activeHumans.size() >= MAX_ACTIVE_HUMANS) {
         return;
+    }
 
-
-    if (trafficLightTimer - lastHumanSpawnTime < MIN_TIME_BETWEEN_SPAWNS)
+    if (lastHumanSpawnTime != 0 && lastHumanSpawnTime < MIN_TIME_BETWEEN_SPAWNS) {
         return;
+    }
 
     bool startsOnBottomSidewalk = rand() % 2 == 0;
     bool comesFromLeft = rand() % 2 == 0;
-
 
     float x = comesFromLeft ? -100.0f - (rand() % 50) : (WINDOW_WIDTH + 100.0f + (rand() % 50));
     float y = startsOnBottomSidewalk ? (SIDEWALK_BOTTOM_Y_START + SIDEWALK_BOTTOM_Y_END) / 2.0f : (SIDEWALK_TOP_Y_START + SIDEWALK_TOP_Y_END) / 2.0f;
@@ -684,17 +714,20 @@ void spawnNewHuman()
     ped.y = y;
     ped.currentSidewalkY = y;
 
-    if (comesFromLeft)
-    {
-        ped.targetX = HUMAN_CROSSING_CENTER_X + (rand() % (int)(HUMAN_CROSSING_WIDTH / 2));
-    }
-    else
-    {
-        ped.targetX = HUMAN_CROSSING_CENTER_X - (rand() % (int)(HUMAN_CROSSING_WIDTH / 2));
+    // Only set targetX to crossing if the human will cross the road
+    if (ped.willCrossRoad) {
+        if (comesFromLeft) {
+            ped.targetX = HUMAN_CROSSING_CENTER_X + (rand() % (int)(HUMAN_CROSSING_WIDTH / 2));
+        } else {
+            ped.targetX = HUMAN_CROSSING_CENTER_X - (rand() % (int)(HUMAN_CROSSING_WIDTH / 2));
+        }
     }
 
     activeHumans.push_back(ped);
-    lastHumanSpawnTime = trafficLightTimer;
+
+    lastHumanSpawnTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
 }
 
 
@@ -1198,7 +1231,7 @@ void drawTrafficSignal(float x, float y, TrafficLightState state) {
         // Determine bulb color based on segment and current state
         if(i == 0 && state == TrafficLightState::RED)
             glColor3f(1.0f, 0.0f, 0.0f);
-        else if(i == 1 && state == TrafficLightState::YELLOW)
+        else if(i == 1 && state == TrafficLightState::YELLOW && yellowLightOn)
             glColor3f(1.0f, 1.0f, 0.0f);
         else if(i == 2 && state == TrafficLightState::GREEN)
             glColor3f(0.0f, 1.0f, 0.0f);
@@ -1213,7 +1246,7 @@ void drawTrafficSignal(float x, float y, TrafficLightState state) {
 
         if(i == 0 && state == TrafficLightState::RED)
             glColor4f(1.0f, 0.0f, 0.0f, 0.3f);
-        else if(i == 1 && state == TrafficLightState::YELLOW)
+        else if(i == 1 && state == TrafficLightState::YELLOW && yellowLightOn)
             glColor4f(1.0f, 1.0f, 0.0f, 0.3f);
         else if(i == 2 && state == TrafficLightState::GREEN)
             glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
@@ -1482,7 +1515,7 @@ void updateHumans() {
         }
     }
 
-    if (activeHumans.size() < MAX_ACTIVE_HUMANS && rand() % HUMAN_SPAWN_RATE_SIDEWALK == 0)
+    if (activeHumans.size() < MAX_ACTIVE_HUMANS && rand() % HUMAN_SPAWN_RATE_SIDEWALK == 0 )
     {
         spawnNewHuman();
     }
@@ -1526,15 +1559,132 @@ void updateClouds() {
         }
     }
 }
-void updateScene()
-{
+
+// Add this function before updateScene()
+void updateTrafficLight() {
+    if (!manualControl) {
+        trafficLightTimer++;
+        
+        // Handle yellow light blinking
+        if (mainTrafficLightState == TrafficLightState::YELLOW) {
+            yellowBlinkTimer++;
+            if (yellowBlinkTimer >= YELLOW_BLINK_INTERVAL) {
+                yellowLightOn = !yellowLightOn;
+                yellowBlinkTimer = 0;
+            }
+        }
+
+        // Auto cycle through states
+        switch (mainTrafficLightState) {
+            case TrafficLightState::RED:
+                if (trafficLightTimer >= RED_DURATION) {
+                    mainTrafficLightState = TrafficLightState::GREEN;
+                    pedestrianLightState = PedestrianLightState::RED;
+                    trafficLightTimer = 0;
+                }
+                break;
+            case TrafficLightState::GREEN:
+                if (trafficLightTimer >= GREEN_DURATION) {
+                    mainTrafficLightState = TrafficLightState::YELLOW;
+                    trafficLightTimer = 0;
+                }
+                break;
+            case TrafficLightState::YELLOW:
+                if (trafficLightTimer >= YELLOW_DURATION) {
+                    mainTrafficLightState = TrafficLightState::RED;
+                    pedestrianLightState = PedestrianLightState::WALK;
+                    trafficLightTimer = 0;
+                }
+                break;
+        }
+    }
+}
+
+// Add this function to check if any humans are on the road
+bool areHumansOnRoad() {
+    for (const auto& human : activeHumans) {
+        if (human.state == CROSSING_ROAD) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Add this function to check if any cars are near the crossing
+bool areCarsNearCrossing() {
+    for (const auto& car : cars) {
+        if (car.x + car.width > HUMAN_CROSSING_X_START - 50.0f && 
+            car.x < HUMAN_CROSSING_X_START + HUMAN_CROSSING_WIDTH + 50.0f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Modify the mouse function to handle traffic light clicks
+void mouse(int button, int state, int x, int y) {
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        int glutY = WINDOW_HEIGHT - y;
+        
+        // Check if click is on traffic light
+        if (x >= TRAFFIC_LIGHT_X - 20 && x <= TRAFFIC_LIGHT_X + 20 &&
+            glutY >= SIDEWALK_TOP_Y_START && glutY <= SIDEWALK_TOP_Y_START + 100) {
+            
+            // If humans are still crossing, show warning
+            if (areHumansOnRoad()) {
+                showWarningMessage = true;
+                warningMessageTimer = WARNING_MESSAGE_DURATION;
+                return;
+            }
+            
+            // Toggle manual control
+            manualControl = !manualControl;
+            
+            // Cycle through states
+            if (manualControl) {
+                switch (mainTrafficLightState) {
+                    case TrafficLightState::RED:
+                        mainTrafficLightState = TrafficLightState::GREEN;
+                        pedestrianLightState = PedestrianLightState::RED;
+                        break;
+                    case TrafficLightState::GREEN:
+                        mainTrafficLightState = TrafficLightState::RED;
+                        pedestrianLightState = PedestrianLightState::WALK;
+                        break;
+                    case TrafficLightState::YELLOW:
+                        mainTrafficLightState = TrafficLightState::RED;
+                        pedestrianLightState = PedestrianLightState::WALK;
+                        break;
+                }
+            }
+        }
+    }
+}
+
+// Modify updateScene to include traffic light updates
+void updateScene() {
+    updateTrafficLight();
     updateCars();
     updateHumans();
     updateDayNight();
     updateWarning();
     updateClouds();
+    
+    // Check if we should switch to pedestrian crossing
+    if (mainTrafficLightState == TrafficLightState::GREEN && 
+        pedestrianIsWaitingToCross && !areCarsNearCrossing()) {
+        mainTrafficLightState = TrafficLightState::YELLOW;
+        trafficLightTimer = 0;
+    }
+    
+    // Check if we should switch back to car traffic
+    if (mainTrafficLightState == TrafficLightState::RED && 
+        !areHumansOnRoad() && !pedestrianIsWaitingToCross) {
+        mainTrafficLightState = TrafficLightState::GREEN;
+        pedestrianLightState = PedestrianLightState::RED;
+        trafficLightTimer = 0;
+    }
 }
-
 
 void timer(int)
 {
@@ -1579,20 +1729,6 @@ void keyboard(unsigned char key, int x, int y)
         break;
     }
     glutPostRedisplay();
-}
-void mouse(int button, int state, int x, int y)
-{
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
-    {
-        int glutY = WINDOW_HEIGHT - y;
-        
-        // Use this code later
-        // for (auto &car : cars)
-        // {
-        //     if (car.isClicked(x, glutY))
-        //         car.honk();
-        // }
-    }
 }
 
 
