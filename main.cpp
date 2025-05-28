@@ -79,7 +79,6 @@ bool pedestrianIsWaitingToCross = false;
 bool DEBUG_drawBoundingBoxes = false;
 
 
-
 const int WINDOW_WIDTH = 1000;
 const int WINDOW_HEIGHT = 600;
 const float ROAD_Y_BOTTOM = 150.0f;
@@ -98,21 +97,6 @@ const float HUMAN_CROSSING_CENTER_X = HUMAN_CROSSING_X_START + HUMAN_CROSSING_WI
 
 const int HUMAN_ANIMATION_MAX_FRAMES = 4;
 const int HUMAN_ANIMATION_FRAME_DELAY = 12;
-
-
-
-const int Z_INDEX_BACKGROUND = 0;
-const int Z_INDEX_ROAD = 1;
-const int Z_INDEX_SIDEWALK = 2;
-const int Z_INDEX_TREE_TOP = 3;
-const int Z_INDEX_HUMAN_TOP = 4;
-const int Z_INDEX_LIGHT_POLE_TOP = 5;
-const int Z_INDEX_TRAFFIC_LIGHT = 5;
-const int Z_INDEX_CAR = 6;
-const int Z_INDEX_HUMAN_BOTTOM = 7;
-const int Z_INDEX_TREE_BOTTOM = 8;
-const int Z_INDEX_LIGHT_POLE_BOTTOM = 8;
-const int Z_INDEX_TEXT = 9;
 
 struct Rect
 {
@@ -678,6 +662,9 @@ void spawnNewCar()
 
 void spawnNewHuman()
 {
+
+    printf("New human created\n");
+
     if (activeHumans.size() >= MAX_ACTIVE_HUMANS)
         return;
 
@@ -1357,28 +1344,8 @@ void display()
     glutSwapBuffers();
 }
 
-
-void updateScene()
-{
-
-    currentTimeOfDay += USER_DAY_NIGHT_CYCLE_SPEED;
-    if (currentTimeOfDay >= 1.0f)
-        currentTimeOfDay -= 1.0f;
-    isNight = (currentTimeOfDay > 0.75 || currentTimeOfDay < 0.22);
-
-
-    pedestrianIsWaitingToCross = false;
-    for (const auto &ped : activeHumans)
-    {
-        if (ped.state == WAITING_AT_CROSSING_EDGE)
-        {
-            pedestrianIsWaitingToCross = true;
-            break;
-        }
-    }
-
-
-    for (size_t i = 0; i < cars.size(); ++i)
+void updateCars() {
+        for (size_t i = 0; i < cars.size(); ++i)
     {
         Car &car1 = cars[i];
         float targetSpeed = USER_CAR_SPEED_BASE * car1.speedFactor * (car1.y > (ROAD_Y_BOTTOM + ROAD_Y_TOP) / 2.0f ? 0.90f : 1.0f);
@@ -1497,7 +1464,49 @@ void updateScene()
         car1.updateHonk();
     }
 
+    if (cars.size() < 4 && rand() % CAR_SPAWN_RATE == 0)
+    {
+        spawnNewCar();
+    }
+}
 
+void updateHumans() {
+    pedestrianIsWaitingToCross = false;
+
+    for (const auto &ped : activeHumans)
+    {
+        if (ped.state == WAITING_AT_CROSSING_EDGE)
+        {
+            pedestrianIsWaitingToCross = true;
+            break;
+        }
+    }
+
+    if (activeHumans.size() < MAX_ACTIVE_HUMANS && rand() % HUMAN_SPAWN_RATE_SIDEWALK == 0)
+    {
+        spawnNewHuman();
+    }
+
+    for (auto &p : activeHumans) {
+        p.update();
+        activeHumans.erase(
+            std::remove_if(activeHumans.begin(), activeHumans.end(),
+                [](const Human &p) { 
+                    return p.state == DESPAWNED; 
+                }),
+        activeHumans.end());
+    }
+}
+
+void updateDayNight() {
+    currentTimeOfDay += USER_DAY_NIGHT_CYCLE_SPEED;
+    if (currentTimeOfDay >= 1.0f) {
+        currentTimeOfDay -= 1.0f;
+    }
+    isNight = (currentTimeOfDay > 0.75 || currentTimeOfDay < 0.22);
+}
+
+void updateWarning() {
     if (showWarningMessage)
     {
         warningMessageTimer--;
@@ -1506,122 +1515,9 @@ void updateScene()
             showWarningMessage = false;
         }
     }
+}
 
-
-    trafficLightTimer++;
-
-    switch (mainTrafficLightState) {
-        case TrafficLightState::GREEN:
-            // Check if we should transition to yellow
-            if (pedestrianIsWaitingToCross && trafficLightTimer > MIN_CAR_GREEN_TIME) {
-                // Only transition if no pedestrians are currently crossing
-                bool pedestrianCrossing = false;
-                for (const auto &ped : activeHumans) {
-                    if (ped.state == CROSSING_ROAD) {
-                        pedestrianCrossing = true;
-                        break;
-                    }
-                }
-
-                if (!pedestrianCrossing) {
-                    mainTrafficLightState = TrafficLightState::YELLOW;
-                    trafficLightTimer = 0;
-                }
-            }
-            break;
-
-        case TrafficLightState::YELLOW:
-            if (trafficLightTimer > USER_TL_YELLOW_DURATION) {
-                // If we came from green, go to red
-                // If we came from red, go to green
-                if (pedestrianLightState == PedestrianLightState::RED && !pedestrianIsWaitingToCross) {
-                    mainTrafficLightState = TrafficLightState::GREEN;
-                    trafficLightTimer = 0;
-                } else {
-                    mainTrafficLightState = TrafficLightState::RED;
-                    trafficLightTimer = 0;
-                    pedestrianLightState = PedestrianLightState::RED;
-                    pedestrianLightTimer = 0;
-                }
-            }
-            break;
-
-        case TrafficLightState::RED:
-            // Handle pedestrian light states
-            switch (pedestrianLightState) {
-                case PedestrianLightState::RED:
-                    // Check if we should start the walk phase
-                    if (trafficLightTimer > USER_PED_WALK_START_DELAY_AFTER_RED) {
-                        bool anyPedWaiting = false;
-                        for (const auto &ped : activeHumans) {
-                            if (ped.state == WAITING_AT_CROSSING_EDGE) {
-                                anyPedWaiting = true;
-                                break;
-                            }
-                        }
-
-                        if (anyPedWaiting || pedestrianIsWaitingToCross) {
-                            pedestrianLightState = PedestrianLightState::WALK;
-                            pedestrianLightTimer = 0;
-                            pedestrianIsWaitingToCross = false;
-                        }
-                        // If no pedestrians are waiting and we've waited long enough, go back to green
-                        else if (trafficLightTimer > USER_TL_RED_DURATION) {
-                            mainTrafficLightState = TrafficLightState::YELLOW;
-                            trafficLightTimer = 0;
-                        }
-                    }
-                    break;
-
-                case PedestrianLightState::WALK:
-                    pedestrianLightTimer++;
-                    if (pedestrianLightTimer > USER_PED_WALK_DURATION) {
-                        pedestrianLightState = PedestrianLightState::BLINK;
-                        pedestrianLightTimer = 0;
-                        pedBlinkCounter = 0;
-                        pedBlinkOn = true;
-                    }
-                    break;
-
-                case PedestrianLightState::BLINK:
-                    pedestrianLightTimer++;
-                    pedBlinkCounter = (pedBlinkCounter + 1) % 25;
-                    if (pedBlinkCounter == 0) {
-                        pedBlinkOn = !pedBlinkOn;
-                    }
-                    if (pedestrianLightTimer > USER_PED_BLINK_DURATION) {
-                        pedestrianLightState = PedestrianLightState::RED;
-                        pedBlinkOn = true;
-                        // After blinking is done, go back to green
-                        mainTrafficLightState = TrafficLightState::YELLOW;
-                        trafficLightTimer = 0;
-                    }
-                    break;
-            }
-            break;
-    }
-
-    if (cars.size() < 4 && rand() % CAR_SPAWN_RATE == 0)
-    {
-        spawnNewCar();
-    }
-
-
-    if (activeHumans.size() < MAX_ACTIVE_HUMANS && rand() % HUMAN_SPAWN_RATE_SIDEWALK == 0)
-    {
-        spawnNewHuman();
-    }
-
-
-    for (auto &p : activeHumans)
-        p.update();
-    activeHumans.erase(
-        std::remove_if(activeHumans.begin(), activeHumans.end(),
-                       [](const Human &p)
-                       { return p.state == DESPAWNED; }),
-        activeHumans.end());
-
-    // Update cloud positions
+void updateClouds() {
     for (auto& cloud : clouds) {
         cloud.x += cloud.speed;
         if (cloud.x > WINDOW_WIDTH + 100.0f) {
@@ -1629,6 +1525,14 @@ void updateScene()
             cloud.y = WINDOW_HEIGHT * (0.8f + (rand() % 20) / 100.0f); // Random height between 0.8 and 1.0
         }
     }
+}
+void updateScene()
+{
+    updateCars();
+    updateHumans();
+    updateDayNight();
+    updateWarning();
+    updateClouds();
 }
 
 
@@ -1681,49 +1585,13 @@ void mouse(int button, int state, int x, int y)
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
         int glutY = WINDOW_HEIGHT - y;
-        float sigClickY_min = SIDEWALK_TOP_Y_START + 60;
-        float sigClickY_max = SIDEWALK_TOP_Y_START + 150;
-
-        if (x >= TRAFFIC_LIGHT_X - TRAFFIC_LIGHT_BOX_WIDTH && x <= TRAFFIC_LIGHT_X + TRAFFIC_LIGHT_BOX_WIDTH &&
-            glutY >= sigClickY_min && glutY <= sigClickY_max)
-        {
-
-
-            bool pedestrianCrossing = false;
-            for (const auto &ped : activeHumans)
-            {
-                if (ped.state == CROSSING_ROAD)
-                {
-                    pedestrianCrossing = true;
-                    break;
-                }
-            }
-
-            if (pedestrianCrossing)
-            {
-                showWarningMessage = true;
-                warningMessageTimer = WARNING_MESSAGE_DURATION;
-            }
-            else
-            {
-                int nextState = (static_cast<int>(mainTrafficLightState) + 1) % 3;
-                mainTrafficLightState = static_cast<TrafficLightState>(nextState);
-                trafficLightTimer = 0;
-                pedestrianLightTimer = 0;
-                if (mainTrafficLightState == TrafficLightState::GREEN)
-                {
-                    pedestrianLightState = PedestrianLightState::RED;
-                    pedestrianIsWaitingToCross = false;
-                }
-                std::cout << "Traffic Light Manually Cycled." << std::endl;
-            }
-        }
-
-        for (auto &car : cars)
-        {
-            if (car.isClicked(x, glutY))
-                car.honk();
-        }
+        
+        // Use this code later
+        // for (auto &car : cars)
+        // {
+        //     if (car.isClicked(x, glutY))
+        //         car.honk();
+        // }
     }
 }
 
