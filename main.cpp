@@ -10,12 +10,9 @@
 #include <functional>
 
 const float USER_CAR_SPEED_BASE = 1.75f;
-const float USER_HUMAN_SPEED = 0.80f;
+const float USER_HUMAN_SPEED = 2.80f;
 const float USER_HUMAN_SIDEWALK_SPEED_FACTOR = 1.2f;
 
-
-const int MIN_CAR_GREEN_TIME = 300;
-const int USER_TL_YELLOW_DURATION = 90;
 
 const int USER_PED_WALK_START_DELAY_AFTER_RED = 60;
 const int USER_PED_WALK_DURATION = 400;
@@ -49,7 +46,6 @@ int warningMessageTimer = 0;
 const int WARNING_MESSAGE_DURATION = 120;
 
 
-bool autoCarMovement = true;
 bool scenePaused = false;
 
 // Add this after the other enums
@@ -76,13 +72,13 @@ int trafficLightTimer = 0;
 int pedestrianLightTimer = 0;
 bool pedBlinkOn = true;
 int pedBlinkCounter = 0;
-bool pedestrianIsWaitingToCross = false;
 bool DEBUG_drawBoundingBoxes = false;
 
 // Add these variables after the other global variables
 int yellowBlinkTimer = 0;
 bool yellowLightOn = true;
 bool manualControl = false;
+TrafficLightState previousState = TrafficLightState::GREEN;  // Track previous state
 
 
 const int WINDOW_WIDTH = 1000;
@@ -281,6 +277,7 @@ struct Car
         if (DEBUG_drawBoundingBoxes)
         {
             Rect b = getBounds();
+            // Draw bounding box
             glColor3f(1.0f, 0.0f, 0.0f);
             glBegin(GL_LINE_LOOP);
             glVertex2f(b.x, b.y);
@@ -288,6 +285,25 @@ struct Car
             glVertex2f(b.x + b.w, b.y + b.h);
             glVertex2f(b.x, b.y + b.h);
             glEnd();
+            // Add label for car bounding box
+            glColor3f(1.0f, 0.0f, 0.0f);
+            drawText(b.x, b.y + b.h + 5, "Car Bounding Box", 0.5f);
+
+            // Draw minimum spacing area
+            glColor3f(0.0f, 0.7f, 1.0f);  // Light blue color for spacing area
+            glBegin(GL_LINE_LOOP);
+            glVertex2f(b.x + b.w, b.y - CAR_SAME_LANE_Y_THRESHOLD);
+            glVertex2f(b.x + b.w + MIN_CAR_SPACING_AHEAD, b.y - CAR_SAME_LANE_Y_THRESHOLD);
+            glVertex2f(b.x + b.w + MIN_CAR_SPACING_AHEAD, b.y + b.h + CAR_SAME_LANE_Y_THRESHOLD);
+            glVertex2f(b.x + b.w, b.y + b.h + CAR_SAME_LANE_Y_THRESHOLD);
+            glEnd();
+            // Add label for minimum spacing
+            glColor3f(0.0f, 0.7f, 1.0f);
+            drawText(b.x + b.w, b.y + b.h + 35, "Min Car Spacing", 0.5f);
+            // Add distance value
+            char distText[32];
+            sprintf(distText, "%.1f units", MIN_CAR_SPACING_AHEAD);
+            drawText(b.x + b.w, b.y + b.h + 20, distText, 0.5f);
         }
     }
 
@@ -528,6 +544,18 @@ struct Human
             glVertex2f(b.x + b.w, b.y + b.h);
             glVertex2f(b.x, b.y + b.h);
             glEnd();
+            // Add label for human bounding box
+            glColor3f(0.0f, 1.0f, 0.0f);
+            std::string stateText = "Human: ";
+            switch(state) {
+                case WALKING_ON_SIDEWALK_TO_CROSSING: stateText += "Walking to Crossing"; break;
+                case WAITING_AT_CROSSING_EDGE: stateText += "Waiting at Crossing"; break;
+                case CROSSING_ROAD: stateText += "Crossing Road"; break;
+                case REACHED_OTHER_SIDEWALK: stateText += "Reached Sidewalk"; break;
+                case WALKING_AWAY_ON_SIDEWALK: stateText += "Walking Away"; break;
+                case DESPAWNED: stateText += "Despawned"; break;
+            }
+            drawText(b.x, b.y + b.h + 5, stateText.c_str(), 0.5f);
         }
     }
 
@@ -782,6 +810,33 @@ void drawZebraCrossing(float road_y_bottom, float road_y_top, float crossing_are
         glVertex2f(crossing_area_x_start + crossing_area_width, (road_y_bottom + (i + 1) * stripe_height) + offset);
         glVertex2f(crossing_area_x_start, (road_y_bottom + (i + 1) * stripe_height) + offset);
         glEnd();
+    }
+
+    // Draw debug bounding box for zebra crossing area
+    if (DEBUG_drawBoundingBoxes) {
+        // Main crossing area
+        glColor3f(1.0f, 0.0f, 1.0f);  // Magenta color for zebra crossing debug box
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(crossing_area_x_start, road_y_bottom);
+        glVertex2f(crossing_area_x_start + crossing_area_width, road_y_bottom);
+        glVertex2f(crossing_area_x_start + crossing_area_width, road_y_top);
+        glVertex2f(crossing_area_x_start, road_y_top);
+        glEnd();
+        // Label for main crossing area
+        glColor3f(1.0f, 0.0f, 1.0f);
+        drawText(crossing_area_x_start, road_y_top + 10, "Main Crossing Area", 0.5f);
+
+        // Extended waiting area (20 units on each side)
+        glColor3f(1.0f, 0.5f, 1.0f);  // Lighter magenta for extended area
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(crossing_area_x_start - 20.0f, road_y_bottom);
+        glVertex2f(crossing_area_x_start + crossing_area_width + 20.0f, road_y_bottom);
+        glVertex2f(crossing_area_x_start + crossing_area_width + 20.0f, road_y_top);
+        glVertex2f(crossing_area_x_start - 20.0f, road_y_top);
+        glEnd();
+        // Label for extended waiting area
+        glColor3f(1.0f, 0.5f, 1.0f);
+        drawText(crossing_area_x_start - 20.0f, road_y_top + 25, "Extended Waiting Area (+/- 20 units)", 0.5f);
     }
 }
 
@@ -1388,7 +1443,6 @@ void updateCars() {
 
         if (mainTrafficLightState == TrafficLightState::RED || mainTrafficLightState == TrafficLightState::YELLOW)
         {
-
             if (car1.x + car1.width < CAR_STOP_LINE_X + 5.0f &&
                 car1.x + car1.width > CAR_STOP_LINE_X - DISTANCE_TO_STOP_FROM_SIGNAL)
             {
@@ -1398,7 +1452,7 @@ void updateCars() {
         }
 
         bool blockedByCarAhead = false;
-        if (autoCarMovement && !stoppedByLight)
+        if (!stoppedByLight)
         {
             for (size_t j = 0; j < cars.size(); ++j)
             {
@@ -1434,7 +1488,7 @@ void updateCars() {
 
         bool blockedByHuman = false;
 
-        if (autoCarMovement && !stoppedByLight && !blockedByCarAhead && car1.y < (ROAD_Y_BOTTOM + ROAD_Y_TOP) / 2.0f)
+        if (!stoppedByLight && !blockedByCarAhead && car1.y < (ROAD_Y_BOTTOM + ROAD_Y_TOP) / 2.0f)
         {
             Rect carNextBounds = {car1.x + car1.current_speed, car1.y, car1.width, car1.height};
 
@@ -1463,18 +1517,14 @@ void updateCars() {
             }
         }
 
-        if (autoCarMovement)
+        if (stoppedByLight || blockedByCarAhead || blockedByHuman)
         {
-            if (stoppedByLight || blockedByCarAhead || blockedByHuman)
-            {
-                car1.current_speed = 0;
-            }
-            car1.x += car1.current_speed;
+            car1.current_speed = 0;
         }
+        car1.x += car1.current_speed;
 
         if (car1.x > WINDOW_WIDTH + car1.width + 20)
         {
-
             float respawnX = -car1.width - 100.0f;
             for (const auto &car2 : cars)
             {
@@ -1504,16 +1554,6 @@ void updateCars() {
 }
 
 void updateHumans() {
-    pedestrianIsWaitingToCross = false;
-
-    for (const auto &ped : activeHumans)
-    {
-        if (ped.state == WAITING_AT_CROSSING_EDGE)
-        {
-            pedestrianIsWaitingToCross = true;
-            break;
-        }
-    }
 
     if (activeHumans.size() < MAX_ACTIVE_HUMANS && rand() % HUMAN_SPAWN_RATE_SIDEWALK == 0 )
     {
@@ -1560,6 +1600,19 @@ void updateClouds() {
     }
 }
 
+// Add this function to check if humans are physically waiting at the crossing
+bool areHumansWaitingAtCrossing() {
+    for (const auto& human : activeHumans) {
+        // Check if human is near the crossing area and in waiting state
+        if (human.state == WAITING_AT_CROSSING_EDGE &&
+            human.x >= HUMAN_CROSSING_X_START - 20.0f && 
+            human.x <= HUMAN_CROSSING_X_START + HUMAN_CROSSING_WIDTH + 20.0f) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Add this function before updateScene()
 void updateTrafficLight() {
     if (!manualControl) {
@@ -1572,30 +1625,41 @@ void updateTrafficLight() {
                 yellowLightOn = !yellowLightOn;
                 yellowBlinkTimer = 0;
             }
-        }
-
-        // Auto cycle through states
-        switch (mainTrafficLightState) {
-            case TrafficLightState::RED:
-                if (trafficLightTimer >= RED_DURATION) {
-                    mainTrafficLightState = TrafficLightState::GREEN;
-                    pedestrianLightState = PedestrianLightState::RED;
-                    trafficLightTimer = 0;
-                }
-                break;
-            case TrafficLightState::GREEN:
-                if (trafficLightTimer >= GREEN_DURATION) {
-                    mainTrafficLightState = TrafficLightState::YELLOW;
-                    trafficLightTimer = 0;
-                }
-                break;
-            case TrafficLightState::YELLOW:
-                if (trafficLightTimer >= YELLOW_DURATION) {
+            
+            // Transition based on previous state
+            if (trafficLightTimer >= YELLOW_DURATION) {
+                if (previousState == TrafficLightState::GREEN) {
                     mainTrafficLightState = TrafficLightState::RED;
                     pedestrianLightState = PedestrianLightState::WALK;
-                    trafficLightTimer = 0;
+                } else {
+                    mainTrafficLightState = TrafficLightState::GREEN;
+                    pedestrianLightState = PedestrianLightState::RED;
                 }
-                break;
+                trafficLightTimer = 0;
+                yellowBlinkTimer = 0;
+            }
+        }
+        // Handle other states
+        else if (mainTrafficLightState == TrafficLightState::RED) {
+            if (trafficLightTimer >= RED_DURATION) {
+                previousState = TrafficLightState::RED;
+                mainTrafficLightState = TrafficLightState::YELLOW;
+                trafficLightTimer = 0;
+                yellowBlinkTimer = 0;
+            }
+        }
+        else if (mainTrafficLightState == TrafficLightState::GREEN) {
+            // Only turn yellow if humans are waiting
+            if (trafficLightTimer >= GREEN_DURATION && areHumansWaitingAtCrossing()) {
+                previousState = TrafficLightState::GREEN;
+                mainTrafficLightState = TrafficLightState::YELLOW;
+                trafficLightTimer = 0;
+                yellowBlinkTimer = 0;
+            }
+            // Reset timer if no humans are waiting
+            else if (trafficLightTimer >= GREEN_DURATION) {
+                trafficLightTimer = 0;
+            }
         }
     }
 }
@@ -1672,16 +1736,8 @@ void updateScene() {
     
     // Check if we should switch to pedestrian crossing
     if (mainTrafficLightState == TrafficLightState::GREEN && 
-        pedestrianIsWaitingToCross && !areCarsNearCrossing()) {
+        areHumansWaitingAtCrossing() && !areCarsNearCrossing()) {
         mainTrafficLightState = TrafficLightState::YELLOW;
-        trafficLightTimer = 0;
-    }
-    
-    // Check if we should switch back to car traffic
-    if (mainTrafficLightState == TrafficLightState::RED && 
-        !areHumansOnRoad() && !pedestrianIsWaitingToCross) {
-        mainTrafficLightState = TrafficLightState::GREEN;
-        pedestrianLightState = PedestrianLightState::RED;
         trafficLightTimer = 0;
     }
 }
@@ -1699,20 +1755,16 @@ void keyboard(unsigned char key, int x, int y)
 {
     switch (key)
     {
-    case 'c':
-    case 'C':
-        autoCarMovement = !autoCarMovement;
-        break;
     case 'p':
     case 'P':
         scenePaused = !scenePaused;
         break;
-    case 'b':
-    case 'B':
-        DEBUG_drawBoundingBoxes = !DEBUG_drawBoundingBoxes;
-        break;
     case 'd':
     case 'D':
+        DEBUG_drawBoundingBoxes = !DEBUG_drawBoundingBoxes;
+        break;
+    case 'n':
+    case 'N':
         if (isNight)
         {
             currentTimeOfDay = 0.3f;
