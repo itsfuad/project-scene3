@@ -51,7 +51,6 @@ bool scenePaused = false;
 // Add this after the other enums
 enum class TrafficLightState {
     RED,
-    YELLOW,
     GREEN,
 };
 
@@ -60,26 +59,20 @@ TrafficLightState mainTrafficLightState = TrafficLightState::GREEN;
 
 // Add this after the TrafficLightState enum
 enum class PedestrianLightState {
-    RED,
+    DONT_WALK,
     WALK,
-    BLINK
 };
 
 // Replace the global variable
-PedestrianLightState pedestrianLightState = PedestrianLightState::RED;
+PedestrianLightState pedestrianLightState = PedestrianLightState::DONT_WALK;
 
-int trafficLightTimer = 0;
-int pedestrianLightTimer = 0;
 bool pedBlinkOn = true;
-int pedBlinkCounter = 0;
+int pedBlinkTimer = 0;
 bool DEBUG_drawBoundingBoxes = false;
 
 // Add these variables after the other global variables
 int yellowBlinkTimer = 0;
-bool yellowLightOn = true;
-bool manualControl = false;
-TrafficLightState previousState = TrafficLightState::GREEN;  // Track previous state
-
+bool yellowLightOn = false;
 
 const int WINDOW_WIDTH = 1000;
 const int WINDOW_HEIGHT = 600;
@@ -117,6 +110,11 @@ bool checkAABBCollision(Rect r1, Rect r2)
             r1.y + r1.h > r2.y);
 }
 
+int timeNow()
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
 
 struct Car;
 struct Human;
@@ -673,14 +671,13 @@ void init()
 int lastCarSpawnTime = 0;
 int lastHumanSpawnTime = 0;
 
-
 void spawnNewCar()
 {
     if (cars.size() >= 4)
         return;
 
 
-    if (trafficLightTimer - lastCarSpawnTime < MIN_TIME_BETWEEN_SPAWNS)
+    if (lastCarSpawnTime < MIN_TIME_BETWEEN_SPAWNS)
         return;
 
     float carW = 60.0f, carH = 28.0f;
@@ -717,7 +714,7 @@ void spawnNewCar()
         r = 0.5f;
 
     cars.emplace_back(minX, y, carW, carH, r, g, b);
-    lastCarSpawnTime = trafficLightTimer;
+    lastCarSpawnTime = timeNow();
 }
 
 
@@ -1261,12 +1258,8 @@ void drawHumanShape(float x, float y, float scale, int walkState) {
 }
 
 void drawHumanSign(float x, float y, PedestrianLightState state) {
-    if (state == PedestrianLightState::WALK)
-        glColor3f(0.0f, 1.0f, 0.0f); // Green for "WALK"
-    else if (state == PedestrianLightState::BLINK && pedBlinkOn)
-        glColor3f(1.0f, 0.5f, 0.0f); // Orange when blinking on
-    else
-        glColor3f(0.9f, 0.0f, 0.0f); // Red for "STOP"
+    
+    glColor3f(0.9f, 0.0f, 0.0f);
 
     drawHumanShape(x + 5, y + 85, 0.8, state == PedestrianLightState::WALK ? 1 : 0);
 }
@@ -1286,12 +1279,12 @@ void drawTrafficSignal(float x, float y, TrafficLightState state) {
         // Determine bulb color based on segment and current state
         if(i == 0 && state == TrafficLightState::RED)
             glColor3f(1.0f, 0.0f, 0.0f);
-        else if(i == 1 && state == TrafficLightState::YELLOW && yellowLightOn)
+        else if(i == 1 && yellowLightOn)
             glColor3f(1.0f, 1.0f, 0.0f);
         else if(i == 2 && state == TrafficLightState::GREEN)
             glColor3f(0.0f, 1.0f, 0.0f);
         else
-            glColor3f(0.3f, 0.3f, 0.3f); // dim bulb when off
+        glColor3f(0.3f, 0.3f, 0.3f); // dim bulb when off
 
         // Draw left and right semi-circles for the bulb
         drawCircle(x + translateX + gap, centerY + translateY - lightRadius, lightRadius);
@@ -1301,8 +1294,6 @@ void drawTrafficSignal(float x, float y, TrafficLightState state) {
 
         if(i == 0 && state == TrafficLightState::RED)
             glColor4f(1.0f, 0.0f, 0.0f, 0.3f);
-        else if(i == 1 && state == TrafficLightState::YELLOW && yellowLightOn)
-            glColor4f(1.0f, 1.0f, 0.0f, 0.3f);
         else if(i == 2 && state == TrafficLightState::GREEN)
             glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
         else
@@ -1441,7 +1432,7 @@ void updateCars() {
 
         bool stoppedByLight = false;
 
-        if (mainTrafficLightState == TrafficLightState::RED || mainTrafficLightState == TrafficLightState::YELLOW)
+        if (mainTrafficLightState == TrafficLightState::RED)
         {
             if (car1.x + car1.width < CAR_STOP_LINE_X + 5.0f &&
                 car1.x + car1.width > CAR_STOP_LINE_X - DISTANCE_TO_STOP_FROM_SIGNAL)
@@ -1613,55 +1604,16 @@ bool areHumansWaitingAtCrossing() {
     return false;
 }
 
-// Add this function before updateScene()
-void updateTrafficLight() {
-    if (!manualControl) {
-        trafficLightTimer++;
-        
-        // Handle yellow light blinking
-        if (mainTrafficLightState == TrafficLightState::YELLOW) {
-            yellowBlinkTimer++;
-            if (yellowBlinkTimer >= YELLOW_BLINK_INTERVAL) {
-                yellowLightOn = !yellowLightOn;
-                yellowBlinkTimer = 0;
-            }
-            
-            // Transition based on previous state
-            if (trafficLightTimer >= YELLOW_DURATION) {
-                if (previousState == TrafficLightState::GREEN) {
-                    mainTrafficLightState = TrafficLightState::RED;
-                    pedestrianLightState = PedestrianLightState::WALK;
-                } else {
-                    mainTrafficLightState = TrafficLightState::GREEN;
-                    pedestrianLightState = PedestrianLightState::RED;
-                }
-                trafficLightTimer = 0;
-                yellowBlinkTimer = 0;
-            }
-        }
-        // Handle other states
-        else if (mainTrafficLightState == TrafficLightState::RED) {
-            if (trafficLightTimer >= RED_DURATION) {
-                previousState = TrafficLightState::RED;
-                mainTrafficLightState = TrafficLightState::YELLOW;
-                trafficLightTimer = 0;
-                yellowBlinkTimer = 0;
-            }
-        }
-        else if (mainTrafficLightState == TrafficLightState::GREEN) {
-            // Only turn yellow if humans are waiting
-            if (trafficLightTimer >= GREEN_DURATION && areHumansWaitingAtCrossing()) {
-                previousState = TrafficLightState::GREEN;
-                mainTrafficLightState = TrafficLightState::YELLOW;
-                trafficLightTimer = 0;
-                yellowBlinkTimer = 0;
-            }
-            // Reset timer if no humans are waiting
-            else if (trafficLightTimer >= GREEN_DURATION) {
-                trafficLightTimer = 0;
-            }
-        }
+void updateYellowLight() {
+    yellowBlinkTimer++;
+    if (yellowBlinkTimer >= YELLOW_BLINK_INTERVAL) {
+        yellowLightOn = !yellowLightOn;
+        yellowBlinkTimer = 0;
     }
+}
+
+void updateTrafficLight() {
+
 }
 
 // Add this function to check if any humans are on the road
@@ -1701,25 +1653,8 @@ void mouse(int button, int state, int x, int y) {
                 return;
             }
             
-            // Toggle manual control
-            manualControl = !manualControl;
-            
-            // Cycle through states
-            if (manualControl) {
-                switch (mainTrafficLightState) {
-                    case TrafficLightState::RED:
-                        mainTrafficLightState = TrafficLightState::GREEN;
-                        pedestrianLightState = PedestrianLightState::RED;
-                        break;
-                    case TrafficLightState::GREEN:
-                        mainTrafficLightState = TrafficLightState::RED;
-                        pedestrianLightState = PedestrianLightState::WALK;
-                        break;
-                    case TrafficLightState::YELLOW:
-                        mainTrafficLightState = TrafficLightState::RED;
-                        pedestrianLightState = PedestrianLightState::WALK;
-                        break;
-                }
+            switch (mainTrafficLightState) {
+
             }
         }
     }
@@ -1733,13 +1668,6 @@ void updateScene() {
     updateDayNight();
     updateWarning();
     updateClouds();
-    
-    // Check if we should switch to pedestrian crossing
-    if (mainTrafficLightState == TrafficLightState::GREEN && 
-        areHumansWaitingAtCrossing() && !areCarsNearCrossing()) {
-        mainTrafficLightState = TrafficLightState::YELLOW;
-        trafficLightTimer = 0;
-    }
 }
 
 void timer(int)
