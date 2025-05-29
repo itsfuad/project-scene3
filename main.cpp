@@ -30,6 +30,7 @@ const float DISTANCE_TO_STOP_FROM_SIGNAL = 20.0f;
 const float USER_DAY_NIGHT_CYCLE_SPEED = 0.0008f;
 float currentTimeOfDay = 0.3f;
 bool isNight = false;
+int frameCount = 0;
 
 
 const int MAX_ACTIVE_HUMANS = 10;
@@ -1255,10 +1256,22 @@ void drawHumanShape(float x, float y, float scale, int walkState) {
 }
 
 void drawHumanSign(float x, float y, PedestrianLightState state) {
-    
-    glColor3f(0.9f, 0.0f, 0.0f);
-
-    drawHumanShape(x + 5, y + 85, 0.8, state == PedestrianLightState::WALK ? 1 : 0);
+    // Add blinking logic for yellow light
+    if (yellowLightOn) {
+        // Blink the DONT_WALK sign
+        if ((frameCount / YELLOW_BLINK_INTERVAL) % 2 == 0) { // Draw on alternate blink intervals
+            glColor3f(0.9f, 0.0f, 0.0f); // Red for blinking "DONT WALK"
+            drawHumanShape(x + 5, y + 85, 0.8, 0); // Draw standing figure (DONT_WALK)
+        }
+    } else {
+        // Normal drawing based on pedestrian light state
+        if (state == PedestrianLightState::WALK) {
+            glColor3f(0.0f, 0.9f, 0.0f);
+        } else {
+            glColor3f(0.9f, 0.0f, 0.0f);
+        }
+        drawHumanShape(x + 5, y + 85, 0.8, state == PedestrianLightState::WALK ? 1 : 0);
+    }
 }
 
 void drawTrafficSignal(float x, float y, TrafficLightState state) {
@@ -1685,6 +1698,7 @@ void timer(int)
     if (!scenePaused)
     {
         updateScene();
+        frameCount++;
     }
     glutPostRedisplay();
     glutTimerFunc(1000 / 60, timer, 0);
