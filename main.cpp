@@ -25,6 +25,7 @@ const float MIN_CAR_SPAWN_DISTANCE = 300.0f;
 const float CAR_SAME_LANE_Y_THRESHOLD = 5.0f;
 const float HUMAN_SAFETY_BUFFER = 3.0f;
 const float DISTANCE_TO_STOP_FROM_SIGNAL = 20.0f;
+const float CAR_SPAWN_OFFSCREEN_DISTANCE = 100.0f;  // Distance from screen edge where cars spawn
 
 
 const float USER_DAY_NIGHT_CYCLE_SPEED = 0.0008f;
@@ -597,22 +598,22 @@ void drawCloud(float x, float y, float scale) {
 
 // Replace the drawStar function with this new one
 void drawStars() {
-    // Stars should be visible during night (currentTimeOfDay > 0.7 or < 0.2)
+    // Stars should be visible during night (currentTimeOfDay > 0.8 or < 0.2)
     // and fade in/out during transitions
     float starAlpha = 0.0f;
 
-    if (currentTimeOfDay >= 0.7f) {
+    if (currentTimeOfDay >= 0.85f) {  // Adjusted from 0.7
         // Night time - full visibility
         starAlpha = 1.0f;
-    } else if (currentTimeOfDay >= 0.6f) {
+    } else if (currentTimeOfDay >= 0.80f) {  // Adjusted from 0.6
         // Smoother transition to night
-        starAlpha = (currentTimeOfDay - 0.6f) / 0.1f;
-    } else if (currentTimeOfDay <= 0.2f) {
+        starAlpha = (currentTimeOfDay - 0.80f) / 0.05f;
+    } else if (currentTimeOfDay <= 0.15f) {  // Adjusted from 0.2
         // Night time - full visibility
         starAlpha = 1.0f;
-    } else if (currentTimeOfDay <= 0.3f) {
+    } else if (currentTimeOfDay <= 0.20f) {  // Adjusted from 0.3
         // Smoother transition to day
-        starAlpha = (0.3f - currentTimeOfDay) / 0.1f;
+        starAlpha = (0.20f - currentTimeOfDay) / 0.05f;
     }
 
     if (starAlpha > 0.0f) {
@@ -674,7 +675,6 @@ void spawnNewCar()
     if (cars.size() >= 4)
         return;
 
-
     if (lastCarSpawnTime < MIN_TIME_BETWEEN_SPAWNS)
         return;
 
@@ -682,36 +682,30 @@ void spawnNewCar()
     bool spawnInTopLane = rand() % 2 == 0;
     float y = spawnInTopLane ? (ROAD_Y_TOP - 8.0f - carH) : (ROAD_Y_BOTTOM + 8.0f);
 
+    // Always spawn cars from outside the screen
+    float spawnX = -carW - CAR_SPAWN_OFFSCREEN_DISTANCE - (rand() % (int)CAR_SPAWN_OFFSCREEN_DISTANCE);  // Spawn from left side, outside screen
 
-    float minX = -carW - 100.0f;
+    // Check spacing with other cars in the same lane
     for (const auto &car : cars)
     {
         if (fabs(car.y - y) < CAR_SAME_LANE_Y_THRESHOLD)
         {
-
-            if (car.x > minX)
+            // If there's a car in the same lane, ensure proper spacing
+            if (car.x < spawnX + MIN_CAR_SPAWN_DISTANCE)
             {
-                minX = car.x - MIN_CAR_SPAWN_DISTANCE;
-            }
-
-            else if (car.x < minX)
-            {
-                minX = std::max(minX, car.x + MIN_CAR_SPAWN_DISTANCE);
+                spawnX = car.x - MIN_CAR_SPAWN_DISTANCE;
             }
         }
     }
 
-
-    minX -= (rand() % 100);
-
-
+    // Generate random color
     float r = (rand() % 10) / 10.0f;
     float g = (rand() % 10) / 10.0f;
     float b = (rand() % 10) / 10.0f;
     if (r < 0.1f && g < 0.1f && b < 0.1f)
         r = 0.5f;
 
-    cars.emplace_back(minX, y, carW, carH, r, g, b);
+    cars.emplace_back(spawnX, y, carW, carH, r, g, b);
     lastCarSpawnTime = timeNow();
 }
 
@@ -898,12 +892,24 @@ void drawFlower(float x, float y, float scale = 1.0f) {
 
 // Add these new functions before the display() function
 void drawSun(float x, float y, float radius) {
+    // Calculate sunset effect (more reddish during sunset)
+    float sunsetFactor = 0.0f;
+    if (currentTimeOfDay >= 0.6f && currentTimeOfDay < 0.8f) {
+        // During sunset (0.6 to 0.8), gradually increase redness but cap it
+        sunsetFactor = std::min((currentTimeOfDay - 0.6f) / 0.2f, 0.5f);  // Cap at 0.5 to prevent too much red
+    }
+    
+    // Base colors
+    float r = 1.0f;  // Red component
+    float g = 0.9f - (0.3f * sunsetFactor);  // Green component decreases during sunset
+    float b = 0.2f - (0.2f * sunsetFactor);  // Blue component decreases during sunset
+
     // Draw outer glow
-    glColor4f(1.0f, 0.8f, 0.0f, 0.3f);
+    glColor4f(r, g, b, 0.3f);
     drawCircle(x, y, radius * 1.5f);
 
     // Draw sun body
-    glColor3f(1.0f, 0.8f, 0.0f);
+    glColor3f(r, g, b);
     drawCircle(x, y, radius);
 }
 
@@ -1144,7 +1150,7 @@ void drawTree(float x, float y, int type) {
 
 void drawBackgroundScenes() {
         // Draw celestial bodies with smooth transitions
-    float sunX = WINDOW_WIDTH * 0.2f;  // Sun on the left
+    float sunX = WINDOW_WIDTH * 0.3f;  // Sun on the left
     float moonX = WINDOW_WIDTH * 0.8f; // Moon on the right
     float celestialY = WINDOW_HEIGHT * 1.2f; // Start sun above the window
 
@@ -1363,48 +1369,72 @@ void drawSceneObjects() {
 }
 
 void transition() {
-    float dayR = 0.52f, dayG = 0.8f, dayB = 0.92f;
-    float duskR = 0.8f, duskG = 0.5f, duskB = 0.4f;
-    float nightR = 0.05f, nightG = 0.05f, nightB = 0.2f;
+    // Base colors for different times of day
+    float dayR = 0.5f, dayG = 0.7f, dayB = 1.0f;    // Bright blue sky
+    float dawnR = 0.6f, dawnG = 0.5f, dawnB = 0.4f;  // Soft orange dawn
+    float nightR = 0.1f, nightG = 0.1f, nightB = 0.3f;  // Dark blue night
+    float duskR = 0.6f, duskG = 0.5f, duskB = 0.4f;  // Soft orange dusk
     float r, g, b;
 
-    if (currentTimeOfDay >= 0.0 && currentTimeOfDay < 0.20)
-    {
-        // Night to dawn transition
-        float t = currentTimeOfDay / 0.20f;
-        r = nightR * (1 - t) + dayR * t;
-        g = nightG * (1 - t) + dayG * t;
-        b = nightB * (1 - t) + dayB * t;
+    // Time windows for each phase
+    float dawnStart = 0.0f;
+    float dawnEnd = 0.2f;
+    float dayStart = 0.2f;
+    float dayEnd = 0.45f;
+    float duskStart = 0.45f;
+    float duskEnd = 0.7f;
+    float nightStart = 0.7f;
+    float nightEnd = 1.0f;
+
+    // Transition periods
+    float transitionPeriod = 0.15f;
+
+    // Calculate color based on time of day
+    if (currentTimeOfDay >= dawnStart && currentTimeOfDay < dawnEnd) {
+        // Dawn transition (night to day)
+        float t = (currentTimeOfDay - dawnStart) / transitionPeriod;
+        if (t > 1.0f) t = 1.0f;
+        r = nightR + (dawnR - nightR) * t;
+        g = nightG + (dawnG - nightG) * t;
+        b = nightB + (dawnB - nightB) * t;
     }
-    else if (currentTimeOfDay >= 0.20 && currentTimeOfDay < 0.45)
-    {
-        r = dayR;
-        g = dayG;
-        b = dayB;
+    else if (currentTimeOfDay >= dayStart && currentTimeOfDay < dayEnd) {
+        // Day transition (dawn to day)
+        float t = (currentTimeOfDay - dayStart) / transitionPeriod;
+        if (t > 1.0f) t = 1.0f;
+        r = dawnR + (dayR - dawnR) * t;
+        g = dawnG + (dayG - dawnG) * t;
+        b = dawnB + (dayB - dawnB) * t;
     }
-    else if (currentTimeOfDay >= 0.45 && currentTimeOfDay < 0.70)
-    {
-        // Day to dusk transition
-        float t = (currentTimeOfDay - 0.45f) / 0.25f;
-        r = dayR * (1 - t) + duskR * t;
-        g = dayG * (1 - t) + duskG * t;
-        b = dayB * (1 - t) + duskB * t;
+    else if (currentTimeOfDay >= duskStart && currentTimeOfDay < duskEnd) {
+        // Dusk transition (day to dusk)
+        float t = (currentTimeOfDay - duskStart) / transitionPeriod;
+        if (t > 1.0f) t = 1.0f;
+        r = dayR + (duskR - dayR) * t;
+        g = dayG + (duskG - dayG) * t;
+        b = dayB + (duskB - dayB) * t;
     }
-    else if (currentTimeOfDay >= 0.70 && currentTimeOfDay < 0.85)
-    {
-        // Dusk to night transition
-        float t = (currentTimeOfDay - 0.70f) / 0.15f;
-        r = duskR * (1 - t) + nightR * t;
-        g = duskG * (1 - t) + nightG * t;
-        b = duskB * (1 - t) + nightB * t;
+    else if (currentTimeOfDay >= nightStart && currentTimeOfDay < nightEnd) {
+        // Night transition (dusk to night)
+        float t = (currentTimeOfDay - nightStart) / transitionPeriod;
+        if (t > 1.0f) t = 1.0f;
+        r = duskR + (nightR - duskR) * t;
+        g = duskG + (nightG - duskG) * t;
+        b = duskB + (nightB - duskB) * t;
     }
-    else
-    {
+    else {
+        // Default to night color
         r = nightR;
         g = nightG;
         b = nightB;
     }
 
+    // Ensure minimum blue component during night to prevent black sky
+    if (currentTimeOfDay >= nightStart || currentTimeOfDay < dawnEnd) {
+        b = std::max(b, 0.25f);
+    }
+
+    // Apply the colors
     glClearColor(r, g, b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glLoadIdentity();
