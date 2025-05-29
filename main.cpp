@@ -69,9 +69,6 @@ PedestrianLightState pedestrianLightState = PedestrianLightState::DONT_WALK;
 bool pedBlinkOn = true;
 int pedBlinkTimer = 0;
 bool DEBUG_drawBoundingBoxes = false;
-
-// Add these variables after the other global variables
-int yellowBlinkTimer = 0;
 bool yellowLightOn = false;
 
 const int WINDOW_WIDTH = 1000;
@@ -307,6 +304,7 @@ struct Car
 
     void honk()
     {
+        std::cout << "Car at (" << x << ", " << y << ") is honking!" << std::endl;
         if (!isHonking)
         {
             isHonking = true;
@@ -331,9 +329,9 @@ struct Car
 
 
 
-enum HumanState
+enum class HumanState
 {
-    WALKING_ON_SIDEWALK_TO_CROSSING,
+    WALKING_ON_SIDEWALK,
     WAITING_AT_CROSSING_EDGE,
     CROSSING_ROAD,
     REACHED_OTHER_SIDEWALK,
@@ -346,7 +344,7 @@ struct Human
     float x, y;
     float targetX, currentSidewalkY;
     bool onBottomSidewalkInitially;
-    bool willCrossRoad;  // New flag to determine if human will cross the road
+    bool willCrossRoad;
     HumanState state;
     int animationFrame;
     int animationTimer;
@@ -360,7 +358,7 @@ struct Human
         speedFactor = 0.85f + (rand() % 31) / 100.0f;
         onBottomSidewalkInitially = startsOnBottomSidewalk;
         willCrossRoad = (rand() % 3) == 0;  // 1/3 chance to cross the road
-        state = WALKING_ON_SIDEWALK_TO_CROSSING;
+        state = HumanState::WALKING_ON_SIDEWALK;
         if (startsOnBottomSidewalk)
             currentSidewalkY = (SIDEWALK_BOTTOM_Y_START + SIDEWALK_BOTTOM_Y_END) / 2.0f;
         else
@@ -392,7 +390,7 @@ struct Human
 
         switch (state)
         {
-        case WALKING_ON_SIDEWALK_TO_CROSSING:
+        case HumanState::WALKING_ON_SIDEWALK:
             isMoving = true;
             y = currentSidewalkY;
             effectiveSpeed *= USER_HUMAN_SIDEWALK_SPEED_FACTOR;
@@ -400,9 +398,9 @@ struct Human
             {
                 x = targetX;
                 if (willCrossRoad) {
-                    state = WAITING_AT_CROSSING_EDGE;
+                    state = HumanState::WAITING_AT_CROSSING_EDGE;
                 } else {
-                    state = DESPAWNED;  // If not crossing, despawn when reaching target
+                    state = HumanState::DESPAWNED;  // If not crossing, despawn when reaching target
                 }
             }
             else if (x < targetX)
@@ -410,12 +408,11 @@ struct Human
             else
                 x -= effectiveSpeed;
             break;
-        case WAITING_AT_CROSSING_EDGE:
-
-            if (pedestrianLightState == PedestrianLightState::WALK)
-                state = CROSSING_ROAD;
+        case HumanState::WAITING_AT_CROSSING_EDGE:
+            if (pedestrianLightState == PedestrianLightState::WALK && !yellowLightOn)
+                state = HumanState::CROSSING_ROAD;
             break;
-        case CROSSING_ROAD:
+        case HumanState::CROSSING_ROAD:
             isMoving = true;
             if (onBottomSidewalkInitially)
             {
@@ -424,7 +421,7 @@ struct Human
                 {
                     y = (SIDEWALK_TOP_Y_START + SIDEWALK_TOP_Y_END) / 2.0f;
                     currentSidewalkY = y;
-                    state = REACHED_OTHER_SIDEWALK;
+                    state = HumanState::REACHED_OTHER_SIDEWALK;
                 }
             }
             else
@@ -434,28 +431,28 @@ struct Human
                 {
                     y = (SIDEWALK_BOTTOM_Y_START + SIDEWALK_BOTTOM_Y_END) / 2.0f;
                     currentSidewalkY = y;
-                    state = REACHED_OTHER_SIDEWALK;
+                    state = HumanState::REACHED_OTHER_SIDEWALK;
                 }
             }
             break;
-        case REACHED_OTHER_SIDEWALK:
+        case HumanState::REACHED_OTHER_SIDEWALK:
             targetX = (x < WINDOW_WIDTH / 2) ? -visualWidth * 2 : WINDOW_WIDTH + visualWidth * 2;
-            state = WALKING_AWAY_ON_SIDEWALK;
+            state = HumanState::WALKING_AWAY_ON_SIDEWALK;
             break;
-        case WALKING_AWAY_ON_SIDEWALK:
+        case HumanState::WALKING_AWAY_ON_SIDEWALK:
             isMoving = true;
             y = currentSidewalkY;
             effectiveSpeed *= USER_HUMAN_SIDEWALK_SPEED_FACTOR;
             if (fabs(x - targetX) < effectiveSpeed * 1.5f || (targetX < 0 && x < 0) || (targetX > WINDOW_WIDTH && x > WINDOW_WIDTH))
             {
-                state = DESPAWNED;
+                state = HumanState::DESPAWNED;
             }
             else if (x < targetX)
                 x += effectiveSpeed;
             else
                 x -= effectiveSpeed;
             break;
-        case DESPAWNED:
+        case HumanState::DESPAWNED:
             break;
         }
 
@@ -546,12 +543,12 @@ struct Human
             glColor3f(0.0f, 1.0f, 0.0f);
             std::string stateText = "Human: ";
             switch(state) {
-                case WALKING_ON_SIDEWALK_TO_CROSSING: stateText += "Walking to Crossing"; break;
-                case WAITING_AT_CROSSING_EDGE: stateText += "Waiting at Crossing"; break;
-                case CROSSING_ROAD: stateText += "Crossing Road"; break;
-                case REACHED_OTHER_SIDEWALK: stateText += "Reached Sidewalk"; break;
-                case WALKING_AWAY_ON_SIDEWALK: stateText += "Walking Away"; break;
-                case DESPAWNED: stateText += "Despawned"; break;
+                case HumanState::WALKING_ON_SIDEWALK: stateText += "Walking"; break;
+                case HumanState::WAITING_AT_CROSSING_EDGE: stateText += "Waiting at Crossing"; break;
+                case HumanState::CROSSING_ROAD: stateText += "Crossing Road"; break;
+                case HumanState::REACHED_OTHER_SIDEWALK: stateText += "Reached Sidewalk"; break;
+                case HumanState::WALKING_AWAY_ON_SIDEWALK: stateText += "Walking Away"; break;
+                case HumanState::DESPAWNED: stateText += "Despawned"; break;
             }
             drawText(b.x, b.y + b.h + 5, stateText.c_str(), 0.5f);
         }
@@ -1277,14 +1274,14 @@ void drawTrafficSignal(float x, float y, TrafficLightState state) {
     for (int i = 0; i < 3; i++) {
         float centerY = y + height - (i + 0.5f) * spacing;
         // Determine bulb color based on segment and current state
-        if(i == 0 && state == TrafficLightState::RED)
+        if(i == 0 && state == TrafficLightState::RED && !yellowLightOn)
             glColor3f(1.0f, 0.0f, 0.0f);
         else if(i == 1 && yellowLightOn)
             glColor3f(1.0f, 1.0f, 0.0f);
-        else if(i == 2 && state == TrafficLightState::GREEN)
+        else if(i == 2 && state == TrafficLightState::GREEN && !yellowLightOn)
             glColor3f(0.0f, 1.0f, 0.0f);
         else
-        glColor3f(0.3f, 0.3f, 0.3f); // dim bulb when off
+            glColor3f(0.3f, 0.3f, 0.3f); // dim bulb when off
 
         // Draw left and right semi-circles for the bulb
         drawCircle(x + translateX + gap, centerY + translateY - lightRadius, lightRadius);
@@ -1292,9 +1289,11 @@ void drawTrafficSignal(float x, float y, TrafficLightState state) {
 
         bool drawGlow = true;
 
-        if(i == 0 && state == TrafficLightState::RED)
+        if(i == 0 && state == TrafficLightState::RED && !yellowLightOn)
             glColor4f(1.0f, 0.0f, 0.0f, 0.3f);
-        else if(i == 2 && state == TrafficLightState::GREEN)
+        else if(i == 1 && yellowLightOn)
+            glColor4f(1.0f, 1.0f, 0.0f, 0.3f);
+        else if(i == 2 && state == TrafficLightState::GREEN && !yellowLightOn)
             glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
         else
             drawGlow = false;
@@ -1432,7 +1431,7 @@ void updateCars() {
 
         bool stoppedByLight = false;
 
-        if (mainTrafficLightState == TrafficLightState::RED)
+        if (mainTrafficLightState == TrafficLightState::RED || yellowLightOn)
         {
             if (car1.x + car1.width < CAR_STOP_LINE_X + 5.0f &&
                 car1.x + car1.width > CAR_STOP_LINE_X - DISTANCE_TO_STOP_FROM_SIGNAL)
@@ -1490,7 +1489,7 @@ void updateCars() {
             {
                 for (const auto &ped : activeHumans)
                 {
-                    if (ped.state == CROSSING_ROAD)
+                    if (ped.state == HumanState::CROSSING_ROAD)
                     {
                         Rect pedBounds = ped.getBounds();
 
@@ -1556,7 +1555,7 @@ void updateHumans() {
         activeHumans.erase(
             std::remove_if(activeHumans.begin(), activeHumans.end(),
                 [](const Human &p) { 
-                    return p.state == DESPAWNED; 
+                    return p.state == HumanState::DESPAWNED; 
                 }),
         activeHumans.end());
     }
@@ -1595,7 +1594,7 @@ void updateClouds() {
 bool areHumansWaitingAtCrossing() {
     for (const auto& human : activeHumans) {
         // Check if human is near the crossing area and in waiting state
-        if (human.state == WAITING_AT_CROSSING_EDGE &&
+        if (human.state == HumanState::WAITING_AT_CROSSING_EDGE &&
             human.x >= HUMAN_CROSSING_X_START - 20.0f && 
             human.x <= HUMAN_CROSSING_X_START + HUMAN_CROSSING_WIDTH + 20.0f) {
             return true;
@@ -1604,22 +1603,41 @@ bool areHumansWaitingAtCrossing() {
     return false;
 }
 
-void updateYellowLight() {
-    yellowBlinkTimer++;
-    if (yellowBlinkTimer >= YELLOW_BLINK_INTERVAL) {
-        yellowLightOn = !yellowLightOn;
-        yellowBlinkTimer = 0;
-    }
+void showGreenLight() {
+    mainTrafficLightState = TrafficLightState::GREEN;
+    pedestrianLightState = PedestrianLightState::DONT_WALK;
 }
 
-void updateTrafficLight() {
+void showRedLight() {
+    mainTrafficLightState = TrafficLightState::RED;
+    pedestrianLightState = PedestrianLightState::WALK;
+}
 
+static std::function<void()> g_pendingCallback = nullptr;
+
+void timerCallback(int value) {
+    yellowLightOn = false;  // turn off yellow light after delay
+    std::cout << "Transition delay completed." << std::endl;
+    if (g_pendingCallback) {
+        g_pendingCallback();  // call the stored function
+        g_pendingCallback = nullptr;  // clear it
+    }
+    glutPostRedisplay();
+}
+
+void showTransitionDelay(std::function<void()> callback, int delay) {
+
+    std::cout << "Transition delay started for " << delay << " milliseconds." << std::endl;
+    glutPostRedisplay();
+
+    g_pendingCallback = callback;
+    glutTimerFunc(delay, timerCallback, 0);
 }
 
 // Add this function to check if any humans are on the road
 bool areHumansOnRoad() {
     for (const auto& human : activeHumans) {
-        if (human.state == CROSSING_ROAD) {
+        if (human.state == HumanState::CROSSING_ROAD) {
             return true;
         }
     }
@@ -1637,24 +1655,17 @@ bool areCarsNearCrossing() {
     return false;
 }
 
+
 // Modify the mouse function to handle traffic light clicks
 void mouse(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
         int glutY = WINDOW_HEIGHT - y;
-        
-        // Check if click is on traffic light
-        if (x >= TRAFFIC_LIGHT_X - 20 && x <= TRAFFIC_LIGHT_X + 20 &&
-            glutY >= SIDEWALK_TOP_Y_START && glutY <= SIDEWALK_TOP_Y_START + 100) {
-            
-            // If humans are still crossing, show warning
-            if (areHumansOnRoad()) {
-                showWarningMessage = true;
-                warningMessageTimer = WARNING_MESSAGE_DURATION;
+        // honk if clicked on a car
+        for (auto& car : cars) {
+            if (x >= car.x && x <= car.x + car.width &&
+                glutY >= car.y && glutY <= car.y + car.height) {
+                car.honk();
                 return;
-            }
-            
-            switch (mainTrafficLightState) {
-
             }
         }
     }
@@ -1662,7 +1673,6 @@ void mouse(int button, int state, int x, int y) {
 
 // Modify updateScene to include traffic light updates
 void updateScene() {
-    updateTrafficLight();
     updateCars();
     updateHumans();
     updateDayNight();
@@ -1683,6 +1693,22 @@ void keyboard(unsigned char key, int x, int y)
 {
     switch (key)
     {
+    case 't':
+    case 'T':
+        if (mainTrafficLightState == TrafficLightState::RED)
+        {
+            //showGreenLight();
+            //show yellow light
+            yellowLightOn = true;
+            showTransitionDelay(showGreenLight, 1000);
+        }
+        else if (mainTrafficLightState == TrafficLightState::GREEN)
+        {
+            //showRedLight();
+            yellowLightOn = true;
+            showTransitionDelay(showRedLight, 1000);
+        }
+        break;
     case 'p':
     case 'P':
         scenePaused = !scenePaused;
