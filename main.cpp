@@ -1714,13 +1714,60 @@ void mouse(int button, int state, int x, int y) {
     }
 }
 
-// Modify updateScene to include traffic light updates
+// Add these new functions before updateScene()
+bool areHumansWaitingToCross() {
+    for (const auto& human : activeHumans) {
+        if (human.state == HumanState::WAITING_AT_CROSSING_EDGE) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool areHumansCrossing() {
+    for (const auto& human : activeHumans) {
+        if (human.state == HumanState::CROSSING_ROAD) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void updateTrafficLights() {
+    static bool wasWaiting = false;
+    static bool wasCrossing = false;
+    
+    bool isWaiting = areHumansWaitingToCross();
+    bool isCrossing = areHumansCrossing();
+    
+    // If humans are waiting and we're not already in the process of changing
+    if (isWaiting && !wasWaiting && !yellowLightOn) {
+        if (mainTrafficLightState == TrafficLightState::GREEN) {
+            yellowLightOn = true;
+            showTransitionDelay(showRedLight, 1000);
+        }
+    }
+    
+    // If no humans are crossing and we were previously crossing
+    if (!isCrossing && wasCrossing && !yellowLightOn) {
+        if (mainTrafficLightState == TrafficLightState::RED) {
+            yellowLightOn = true;
+            showTransitionDelay(showGreenLight, 1000);
+        }
+    }
+    
+    wasWaiting = isWaiting;
+    wasCrossing = isCrossing;
+}
+
+// Modify the updateScene function
 void updateScene() {
     updateCars();
     updateHumans();
     updateDayNight();
     updateWarning();
     updateClouds();
+    updateTrafficLights();  // Add this line
 }
 
 void timer(int)
